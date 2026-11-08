@@ -24,7 +24,7 @@ Local Markdown image references use `![alt](../attachments/<filename>)`. Label p
 
 ## Frames and image bytes
 
-Event frames are `image_frames: {"<filename>": {...}}`; labels use `picture_frame`. Values contain finite `offsetX`, `offsetY`, `cropWidth`, `cropHeight`, `cropScale`; dimensions and scale are positive and width/height is 4:3 (Android tolerance 0.01).
+Event frames are `image_frames: {"<filename>": {...}}`; labels use `picture_frame`. Values contain finite `offsetX`, `offsetY`, `cropWidth`, `cropHeight`, `cropScale`; dimensions and scale are positive and width/height is 4:3 (Android tolerance 0.01). Shared geometry validation also rejects values that overflow Android Float or positive dimensions/scale that underflow to Float zero; it does not impose product-level zoom/pan bounds.
 
 Coordinates are Android **viewport pixels**, not normalized image coordinates. Resizing multiplies both offsets by `currentWidth / savedCropWidth`; relative `cropScale` remains unchanged. Rendering uses the contain scale multiplied by `cropScale`. An absent frame defaults to centered cover. Zoom keeps the image point under the chosen anchor fixed. Framing updates metadata only; processed picture bytes never change.
 

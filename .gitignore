@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-framing/
 .vite/
 .DS_Store
 *.pem

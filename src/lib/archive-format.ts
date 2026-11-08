@@ -1,17 +1,13 @@
 import { LosslessNumber, isLosslessNumber, parse, stringify } from 'lossless-json';
 import { ArchiveFailure, requireValue } from './errors';
+import { validateFrame as validateImageFrame } from './images/image-frame';
+import type { ImageFrame as PictureFrame } from './images/image-frame';
+export type { PictureFrame };
 
 export const TEXT_LIMIT = 256 * 1024;
 export const PICTURE_LIMIT = 25 * 1024 * 1024;
 export type JsonObject = Record<string, unknown>;
 export type LabelId = string | number | LosslessNumber;
-export interface PictureFrame extends JsonObject {
-  offsetX: number;
-  offsetY: number;
-  cropWidth: number;
-  cropHeight: number;
-  cropScale: number;
-}
 export interface EventLabel extends JsonObject { id: string; title: string }
 export interface Label extends JsonObject {
   id: LabelId;
@@ -88,10 +84,7 @@ export function validateFrame(value: unknown): PictureFrame {
     requireValue(typeof n === 'number' && Number.isFinite(n), 'Invalid frame numbers');
     result[key] = n;
   }
-  const frame = result as PictureFrame;
-  requireValue(frame.cropWidth > 0 && frame.cropHeight > 0 && frame.cropScale > 0 &&
-    Math.abs(frame.cropWidth / frame.cropHeight - 4 / 3) < 0.01, 'Invalid 4:3 frame dimensions');
-  return frame;
+  return validateImageFrame(result);
 }
 
 export function validateDate(value: unknown): asserts value is string | null {

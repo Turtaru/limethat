@@ -2,7 +2,7 @@
 
 Headless folder-archive foundation: Svelte 5, strict TypeScript and Vite. Production location is this repository; the Android app and folder prototype remain untouched.
 
-**No actual application views yet.** Production renders a bare shell. Routing (`svelte-spa-router` 5), visual components, transitions and picture-editing widgets belong to the next phase. App icons and install-manifest metadata are configured. Offline support is deliberately deferred until the shell/assets are stable; there is currently no service worker or offline-ready claim.
+**No actual application views yet.** Production renders a bare shell. Routing (`svelte-spa-router` 5), page layouts, visual design and transitions remain for the next phase. A reusable image-framing component spike and isolated harness are implemented; device validation and page integration remain pending. App icons and install-manifest metadata are configured. Offline support is deliberately deferred until the shell/assets are stable; there is currently no service worker or offline-ready claim.
 
 ## Development
 
@@ -20,7 +20,7 @@ Vite uses `/limethat/` for repository-path hosting. Development URL: `http://loc
 
 `npm run check` checks Svelte, TypeScript and check sources without executing tests. `npm test` runs the focused checks in `checks/`; **run only with user permission**. No tests run during build or deployment. Dependency audit currently reports two low-severity development-only advisories through the Svelte Vite plugin's `deepmerge` dependency, with no published fix; production dependencies have no reported advisories.
 
-Development alone includes an unstyled folder lifecycle harness. Its buttons invoke pickers/permission requests directly from user gestures. It exposes `window.limethat` for inspecting the headless API. Neither the harness nor that global is present in the production build. Use disposable archive copies.
+Development alone includes an unstyled folder lifecycle harness. Its buttons invoke pickers/permission requests directly from user gestures. It exposes `window.limethat` for inspecting the headless API. Neither the harness nor that global is present in the production build. Use disposable archive copies. Development also includes a local-file image-framing harness; see [image framing](docs/image-framing.md) for its contract, device checklist and optional `npm run build:framing` HTTPS deployment artifact.
 
 ```js
 const workspace = window.limethat;
@@ -39,7 +39,8 @@ Forms must supply complete drafts, including existing tags/frames; a label draft
 - `src/lib/archive-format.ts`: typed format models, preservation-aware event edits, date/frame validation and lossless JSON IDs.
 - `src/lib/archive.ts`: `Archive(handle)` with `initialize`, `load`, `refresh`, `createEvent`, `updateEvent`, `deleteEvent`, `createLabel`, `updateLabel`, `deleteLabel`, `importPicture` and deferred `readPicture`.
 - `src/lib/folder-access.ts`: capability/secure-context reporting, immediate picker/permission calls, and IndexedDB storage of **one handle only**.
-- `src/lib/pictures.ts`: orientation-aware JPEG processing plus frame resizing, zoom and display bounds. No widgets, object URLs or attachment deletion.
+- `src/lib/pictures.ts`: orientation-aware JPEG processing and compatibility re-exports for frame geometry. No widgets, object URLs or attachment deletion.
+- `src/lib/images/`: pure Android-compatible frame math plus shared Svelte viewport/editor components. Parent-owned drafts and URLs; no storage, router or autosave coupling.
 - `src/lib/workspace.svelte.ts`: instantiate `Workspace` for a reactive session. It owns permission/operation state and the last successfully loaded archive, not unsaved drafts.
 
 `workspace.choose()` opens an archive; `choose(true)` initializes an empty folder; `restore()` retrieves the remembered handle without prompting; `reconnect()` requests permission. Call `choose` and `reconnect` directly from a click or equivalent gesture, without awaiting anything first. Cancellation leaves the workspace intact. Failed replacement loads retain the previous archive and summary. A pending permission-required replacement must be reconnected or replaced by another successful open before mutations.

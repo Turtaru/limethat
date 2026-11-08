@@ -1,5 +1,5 @@
-import { PICTURE_LIMIT, validateFrame } from './archive-format';
-import type { PictureFrame } from './archive-format';
+import { PICTURE_LIMIT } from './archive-format';
+export { defaultFrame, pictureBounds, resizedFrame, zoomFrame } from './images/image-frame';
 import { ArchiveFailure, requireValue } from './errors';
 
 export type PictureStage = 'decoding' | 'encoding-image' | 'encoding-thumbnail' | 'writing';
@@ -45,41 +45,4 @@ export async function processPicture(file: Blob, progress?: (stage: PictureStage
     bitmap.close();
     canvas.width = canvas.height = thumbnail.width = thumbnail.height = 0;
   }
-}
-
-function positive(...values: number[]): void {
-  requireValue(values.every(value => Number.isFinite(value) && value > 0), 'Dimensions and scale must be finite and positive');
-}
-
-/** Resizes Android view-pixel offsets to the current viewport width without changing relative zoom. */
-export function resizedFrame(value: PictureFrame, width: number): PictureFrame {
-  const frame = validateFrame(value);
-  positive(width);
-  const ratio = width / frame.cropWidth;
-  return validateFrame({ ...frame, offsetX: frame.offsetX * ratio, offsetY: frame.offsetY * ratio,
-    cropWidth: width, cropHeight: width * 3 / 4 });
-}
-
-export function defaultFrame(imageWidth: number, imageHeight: number, width: number): PictureFrame {
-  positive(imageWidth, imageHeight, width);
-  const height = width * 3 / 4;
-  const contain = Math.min(width / imageWidth, height / imageHeight);
-  const cover = Math.max(width / imageWidth, height / imageHeight);
-  return validateFrame({ offsetX: (width - imageWidth * cover) / 2, offsetY: (height - imageHeight * cover) / 2,
-    cropWidth: width, cropHeight: height, cropScale: cover / contain });
-}
-
-export function zoomFrame(value: PictureFrame, factor: number, x: number, y: number): PictureFrame {
-  const frame = validateFrame(value);
-  positive(factor);
-  requireValue(Number.isFinite(x) && Number.isFinite(y), 'Invalid zoom anchor');
-  return validateFrame({ ...frame, offsetX: x - (x - frame.offsetX) * factor,
-    offsetY: y - (y - frame.offsetY) * factor, cropScale: frame.cropScale * factor });
-}
-
-export function pictureBounds(value: PictureFrame, imageWidth: number, imageHeight: number, viewportWidth: number): { x: number; y: number; width: number; height: number } {
-  positive(imageWidth, imageHeight, viewportWidth);
-  const frame = resizedFrame(value, viewportWidth);
-  const scale = Math.min(frame.cropWidth / imageWidth, frame.cropHeight / imageHeight) * frame.cropScale;
-  return { x: frame.offsetX, y: frame.offsetY, width: imageWidth * scale, height: imageHeight * scale };
 }

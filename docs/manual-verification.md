@@ -6,6 +6,8 @@ Use disposable archive copies. No automated tests or device checks have been run
 
 `checks/foundation.test.ts` covers metadata/ID preservation, date precision and invalid calendars, frames, stale-save refusal, verified BOM/CRLF backups, failed backup verification, external changes during backup, partial label changes, unreadable events, nonempty-folder refusal and mutation overlap. `checks/memory-folder.ts` is an in-memory filesystem double, not evidence of browser/provider behavior. `checks/icons.test.ts` covers manifest subpath resolution, PNG dimensions, the ICO directory and maskable glyph safe zone; it is prepared but has not been run.
 
+`checks/image-frame.test.ts` adds pure contain/cover, resize, pinch/pan, fit/zoom and Android Float-boundary cases plus event/label frame-only serialization. See [the component spike checklist](image-framing.md) for physical-touch, lifecycle and sequential Android round-trip validation. Geometry sources are not proof of actual pointer behavior.
+
 Request permission before running `npm test`. `npm run check` and `npm run build` do not execute these checks.
 
 ## Emulator first
