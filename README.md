@@ -2,7 +2,7 @@
 
 Headless folder-archive foundation: Svelte 5, strict TypeScript and Vite. Production location is this repository; the Android app and folder prototype remain untouched.
 
-**No actual application views yet.** Production renders a bare shell. Routing (`svelte-spa-router` 5), visual components, transitions and picture-editing widgets belong to the next phase. Install/offline support is deliberately deferred until the shell/assets are stable; there is currently no service worker or offline-ready claim.
+**No actual application views yet.** Production renders a bare shell. Routing (`svelte-spa-router` 5), visual components, transitions and picture-editing widgets belong to the next phase. App icons and install-manifest metadata are configured. Offline support is deliberately deferred until the shell/assets are stable; there is currently no service worker or offline-ready claim.
 
 ## Development
 
@@ -56,11 +56,30 @@ Errors carry `code`, `message`, `affectedPaths` and `recoveryPaths`. Backups are
 
 See [archive compatibility](docs/archive-compatibility.md) and [manual verification](docs/manual-verification.md).
 
+## App logo and icons
+
+The original round and square SVGs are copied into `public/icons/logo.svg` and `public/icons/logo-square.svg`; the originals in `godenk` remain untouched. The local round copy removes a reference to a nonexistent stroke gradient without changing the artwork.
+
+- Round logo: scalable SVG favicon, multi-size ICO fallback (16/32/48), regular 192/512 PNG app icons.
+- Square logo: opaque 180px Apple touch icon and separate full-bleed 192/512 maskable icons. The lime glyph fits inside the central 80%-diameter safe circle; platforms supply their own corner/circle masks.
+- Monochrome lime glyph: Safari pinned-tab mask.
+- `public/manifest.webmanifest`: app name, standalone display, theme/background colors and icon purposes. Relative manifest URLs keep scope/start URL/icons on the deployed repository path. HTML links use Vite's `%BASE_URL%`.
+
+Keep generated files in version control; Vite copies them into `dist/`. After editing either local source SVG, regenerate them:
+
+```sh
+npm run icons:generate
+```
+
+`sharp` is development-only; rasterization does not run in the browser. No global tool or access to the original `godenk` paths is needed to regenerate. Future logo images in views can use `${import.meta.env.BASE_URL}icons/logo.svg`.
+
+This follows the standard [web app manifest icons](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest/Reference/icons) and [maskable icon](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/How_to/Define_app_icons#purpose) patterns. Install availability still depends on the browser, HTTPS and its criteria; icon setup does not provide offline caching.
+
 ## Deployment and later PWA work
 
 Enable GitHub Pages with the GitHub Actions source. `.github/workflows/pages.yml` builds/type-checks and uploads **only `dist/`**, then deploys the bare shell on pushes to `main` or manual dispatch. For another repository name, change Vite's `base`.
 
-Future routes use `svelte-spa-router` hash URLs; no route pages or custom router are implemented. Future manifest start URL/scope and service-worker registration must use Vite's base URL. Generate complete precaching from the build output, including every lazy chunk; do not cache archive data or external media. Report offline readiness only after complete caching. Keep service workers out of development and require an intentional update/activation decision that preserves drafts.
+Future routes use `svelte-spa-router` hash URLs; no route pages or custom router are implemented. Manifest start URL/scope already resolve relative to the base-aware manifest link; future service-worker registration must also use Vite's base URL. Generate complete precaching from the build output, including every lazy chunk; do not cache archive data or external media. Report offline readiness only after complete caching. Keep service workers out of development and require an intentional update/activation decision that preserves drafts.
 
 Folder handles and permission belong to the origin, not a project path. Another GitHub Pages project on the same hostname shares that security origin. Keep the origin stable; changing domains requires reconnecting. A PWA install will not grant filesystem permission or guarantee offline access to a moved/unavailable folder.
 

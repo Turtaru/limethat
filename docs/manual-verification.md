@@ -4,7 +4,7 @@ Use disposable archive copies. No automated tests or device checks have been run
 
 ## Prepared check sources
 
-`checks/foundation.test.ts` covers metadata/ID preservation, date precision and invalid calendars, frames, stale-save refusal, verified BOM/CRLF backups, failed backup verification, external changes during backup, partial label changes, unreadable events, nonempty-folder refusal and mutation overlap. `checks/memory-folder.ts` is an in-memory filesystem double, not evidence of browser/provider behavior.
+`checks/foundation.test.ts` covers metadata/ID preservation, date precision and invalid calendars, frames, stale-save refusal, verified BOM/CRLF backups, failed backup verification, external changes during backup, partial label changes, unreadable events, nonempty-folder refusal and mutation overlap. `checks/memory-folder.ts` is an in-memory filesystem double, not evidence of browser/provider behavior. `checks/icons.test.ts` covers manifest subpath resolution, PNG dimensions, the ICO directory and maskable glyph safe zone; it is prepared but has not been run.
 
 Request permission before running `npm test`. `npm run check` and `npm run build` do not execute these checks.
 
@@ -58,10 +58,15 @@ The prototype established localhost/adb access, not full round trips or persiste
 ## Static deployment and later views/offline
 
 - [ ] Enable Actions-based Pages and verify the `/limethat/` shell/assets over trusted HTTPS.
+- [ ] Inspect manifest scope/start URL and every icon URL on `/limethat/`; confirm no request falls back to the hostname root.
+- [ ] Check SVG favicon and ICO fallback in browser tabs; check Safari's pinned-tab mask where supported.
+- [ ] Add to the iOS/iPadOS Home Screen; verify the opaque Apple icon and platform-applied corners.
+- [ ] Install/add to Home Screen on Android and desktop where supported; verify regular/maskable icons and that launch stays under `/limethat/`.
+- [ ] Preview maskable icons with circular, rounded-square and squircle masks; confirm the white lime glyph is not clipped.
 - [ ] On physical Android Chrome, verify actual picker support, writes, prompts and restart behavior. Desktop build success is not device evidence.
 - [ ] After real views arrive: verify hash deep links, unknown routes/IDs, reconnect/resume, guards for Back/Forward, focus and scroll restoration.
 - [ ] After offline caching arrives: verify complete precache readiness, intentional update activation and preservation of drafts.
 - [ ] After readiness, disconnect and open **every** route, including never-visited lazy views; read/edit local archives and display local pictures without network requests.
 - [ ] Offline relaunch still requires an available folder and usable permission; validate cache eviction/reconnection messaging.
 
-No PWA install, background access, continuous watching or offline-shell availability is claimed by the current foundation.
+Icon/install metadata is provided, but installation on target devices remains unverified. No background access, continuous watching or offline-shell availability is claimed by the current foundation.
