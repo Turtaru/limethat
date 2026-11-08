@@ -1,0 +1,306 @@
+import {
+  PICTURE_LIMIT, TEXT_LIMIT, editEvent, labelKey, newEvent, nextLabelId, parseEvent,
+  parseLabels, parseManifest, safeName, serialize, updateMetadata, validateFrame, validateText,
+} from './archive-format';
+import type { ArchiveEvent, ArchiveSummary, EventDraft, Label, PictureFrame } from './archive-format';
+import { ArchiveFailure, failure, requireValue } from './errors';
+import { processPicture } from './pictures';
+import type { PictureStage } from './pictures';
+
+export interface MutationResult<T> {
+  value: T;
+  affectedPaths: string[];
+  recoveryPaths: string[];
+}
+export interface LabelDraft { title: string; picture?: string; picture_frame?: PictureFrame }
+interface TextChange { path: string; source: string | null; next: string | null }
+
+const encoder = new TextEncoder();
+// Keep the BOM in the source snapshot so conflict checks and recovery copies preserve its bytes.
+const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+export class Archive {
+  private busy = false;
+
+  constructor(readonly root: FileSystemDirectoryHandle) {}
+
+  get operating(): boolean { return this.busy; }
+
+  private async exclusive<T>(action: () => Promise<T>): Promise<T> {
+    requireValue(!this.busy, 'Another archive operation is running; wait before retrying.', 'busy');
+    this.busy = true;
+    try { return await action(); }
+    catch (error) { throw failure(error); }
+    finally { this.busy = false; }
+  }
+
+  private async location(path: string): Promise<{ directory: FileSystemDirectoryHandle; name: string }> {
+    const parts = path.split('/');
+    requireValue(parts.length <= 2 && parts.every(safeName), 'Invalid archive path');
+    const name = parts.pop()!;
+    const directory = parts.length ? await this.root.getDirectoryHandle(parts[0]) : this.root;
+    return { directory, name };
+  }
+
+  private async read(path: string): Promise<string> {
+    const { directory, name } = await this.location(path);
+    const file = await (await directory.getFileHandle(name)).getFile();
+    requireValue(file.size <= TEXT_LIMIT, `${path} exceeds 256 KB`, 'limit-exceeded');
+    try { return decoder.decode(await file.arrayBuffer()); }
+    catch (cause) { throw new ArchiveFailure('invalid-data', `Cannot decode UTF-8: ${path}`, [path], [], { cause }); }
+  }
+
+  private async assertMissing(path: string): Promise<void> {
+    const { directory, name } = await this.location(path);
+    try { await directory.getFileHandle(name); }
+    catch (error) {
+      if (error instanceof DOMException && error.name === 'NotFoundError') return;
+      throw error;
+    }
+    throw new ArchiveFailure('conflict', `${path} already exists. Refresh before continuing.`, [path]);
+  }
+
+  private async assertSource(path: string, source: string | null): Promise<void> {
+    if (source === null) return this.assertMissing(path);
+    if (await this.read(path) !== source) {
+      throw new ArchiveFailure('conflict', `${path} changed outside the app. Refresh before editing.`, [path]);
+    }
+  }
+
+  private async write(path: string, data: string | Blob): Promise<void> {
+    const { directory, name } = await this.location(path);
+    const handle = await directory.getFileHandle(name, { create: true });
+    const stream = await handle.createWritable();
+    try {
+      await stream.write(data);
+      await stream.close();
+    } catch (error) {
+      await stream.abort().catch(() => {});
+      throw error;
+    }
+    const expected = typeof data === 'string' ? encoder.encode(data) : new Uint8Array(await data.arrayBuffer());
+    const savedFile = await handle.getFile();
+    requireValue(savedFile.size === expected.length, `Write verification failed: ${path}`, 'verification-failed');
+    const saved = new Uint8Array(await savedFile.arrayBuffer());
+    requireValue(saved.every((byte, index) => byte === expected[index]), `Write verification failed: ${path}`, 'verification-failed');
+  }
+
+  private async validateArchive(): Promise<void> {
+    parseManifest(await this.read('manifest.json'));
+    parseLabels(await this.read('tags.json'));
+    await this.root.getDirectoryHandle('moments');
+    await this.root.getDirectoryHandle('attachments');
+  }
+
+  /** Applies text changes with verified sibling backups. This detects stale sources but cannot lock out other apps. */
+  private async apply(changes: TextChange[], initializing = false): Promise<MutationResult<void>> {
+    const recoveryPaths: string[] = [];
+    const affectedPaths: string[] = [];
+    let originalsAttempted = false;
+    try {
+      if (!initializing) await this.validateArchive();
+      for (const change of changes) {
+        if (change.next !== null) validateText(change.next);
+        await this.assertSource(change.path, change.source);
+      }
+      for (const change of changes) {
+        if (change.source === null) continue;
+        const backup = `${change.path}.backup-${crypto.randomUUID()}`;
+        await this.assertMissing(backup);
+        affectedPaths.push(backup);
+        await this.write(backup, change.source);
+        recoveryPaths.push(backup);
+        await this.assertSource(change.path, change.source);
+      }
+      for (const change of changes) {
+        await this.assertSource(change.path, change.source);
+        affectedPaths.push(change.path);
+        originalsAttempted = true;
+        if (change.next === null) {
+          const { directory, name } = await this.location(change.path);
+          await directory.removeEntry(name);
+          await this.assertMissing(change.path);
+        } else {
+          await this.write(change.path, change.next);
+        }
+      }
+      return { value: undefined, affectedPaths, recoveryPaths };
+    } catch (error) {
+      const cause = failure(error);
+      throw new ArchiveFailure(originalsAttempted ? 'partial-change' : cause.code,
+        `${cause.message} ${originalsAttempted ? 'Some changes may be complete. Do not blindly retry; refresh and inspect affected files.' : 'This operation did not change original files.'}`,
+        [...new Set([...affectedPaths, ...cause.affectedPaths])], recoveryPaths, { cause });
+    }
+  }
+
+  async initialize(): Promise<MutationResult<void>> {
+    return this.exclusive(async () => {
+      for await (const _entry of this.root.values()) {
+        throw new ArchiveFailure('conflict', 'Choose an empty folder. Existing files were not changed.');
+      }
+      const paths: string[] = [];
+      try {
+        for (const name of ['moments', 'attachments']) {
+          paths.push(name);
+          await this.root.getDirectoryHandle(name, { create: true });
+        }
+        const result = await this.apply([
+          { path: 'tags.json', source: null, next: '[]\n' },
+          { path: 'manifest.json', source: null, next: serialize({
+            format_version: 1, created_at: new Date().toISOString(), moments: 0, attachments: 0,
+            skipped_media: [], external_links: [], files: {},
+          }, 2) + '\n' },
+        ], true);
+        return { ...result, affectedPaths: [...paths, ...result.affectedPaths] };
+      } catch (cause) {
+        const error = failure(cause);
+        throw new ArchiveFailure('partial-change', `Archive setup stopped: ${error.message} New files or directories may remain; inspect this folder or choose another empty folder.`,
+          [...paths, ...error.affectedPaths], error.recoveryPaths, { cause });
+      }
+    });
+  }
+
+  private async readArchive(): Promise<ArchiveSummary> {
+    const manifest = parseManifest(await this.read('manifest.json'));
+    const tagsSource = await this.read('tags.json');
+    const labels = parseLabels(tagsSource);
+    const directory = await this.root.getDirectoryHandle('moments');
+    await this.root.getDirectoryHandle('attachments');
+    const events: ArchiveEvent[] = [];
+    const unreadableEvents: ArchiveSummary['unreadableEvents'] = [];
+    const warnings = ['Manifest counts and hashes describe the original export, not current integrity.'];
+    if (Array.isArray(manifest.skipped_media) && manifest.skipped_media.length) warnings.push('Some pictures were omitted from the original export.');
+    const ids = new Set<string>();
+    for await (const entry of directory.values()) {
+      if (entry.kind !== 'file' || !entry.name.endsWith('.md')) continue;
+      const path = `moments/${entry.name}`;
+      try {
+        const event = parseEvent(entry.name, await this.read(path));
+        requireValue(!ids.has(event.id.toLowerCase()), `Duplicate event UUID: ${event.id}`);
+        ids.add(event.id.toLowerCase());
+        events.push(event);
+      } catch (error) { unreadableEvents.push({ path, message: failure(error).message }); }
+    }
+    events.sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? '') || b.created.localeCompare(a.created));
+    return { manifest, tagsSource, labels, events, unreadableEvents, warnings };
+  }
+
+  async load(): Promise<ArchiveSummary> { return this.exclusive(() => this.readArchive()); }
+  async refresh(): Promise<ArchiveSummary> { return this.load(); }
+
+  async createEvent(draft: EventDraft): Promise<MutationResult<ArchiveEvent>> {
+    return this.exclusive(async () => {
+      const event = newEvent();
+      const text = editEvent(event, draft);
+      const result = await this.apply([{ path: `moments/${event.filename}`, source: null, next: text }]);
+      return { ...result, value: parseEvent(event.filename, text) };
+    });
+  }
+
+  async updateEvent(original: ArchiveEvent, draft: EventDraft): Promise<MutationResult<ArchiveEvent>> {
+    return this.exclusive(async () => {
+      const snapshot = parseEvent(original.filename, original.source);
+      const text = editEvent(snapshot, draft);
+      const result = await this.apply([{ path: `moments/${snapshot.filename}`, source: snapshot.source, next: text }]);
+      return { ...result, value: parseEvent(snapshot.filename, text) };
+    });
+  }
+
+  async deleteEvent(original: ArchiveEvent): Promise<MutationResult<void>> {
+    return this.exclusive(() => {
+      const event = parseEvent(original.filename, original.source);
+      return this.apply([{ path: `moments/${event.filename}`, source: event.source, next: null }]);
+    });
+  }
+
+  async createLabel(snapshot: ArchiveSummary, draft: LabelDraft): Promise<MutationResult<Label>> {
+    return this.changeLabel(snapshot, null, draft) as Promise<MutationResult<Label>>;
+  }
+
+  async updateLabel(snapshot: ArchiveSummary, id: string, draft: LabelDraft): Promise<MutationResult<Label>> {
+    return this.changeLabel(snapshot, id, draft) as Promise<MutationResult<Label>>;
+  }
+
+  async deleteLabel(snapshot: ArchiveSummary, id: string): Promise<MutationResult<null>> {
+    return this.changeLabel(snapshot, id, null) as Promise<MutationResult<null>>;
+  }
+
+  private async changeLabel(snapshot: ArchiveSummary, id: string | null, draft: LabelDraft | null): Promise<MutationResult<Label | null>> {
+    return this.exclusive(async () => {
+      const labels = parseLabels(snapshot.tagsSource);
+      await this.assertSource('tags.json', snapshot.tagsSource);
+      const existing = id === null ? undefined : labels.find(label => labelKey(label.id) === id);
+      requireValue(id === null || existing, 'Label no longer exists. Refresh first.', 'conflict');
+      let replacement: Label | null = null;
+      if (draft) {
+        requireValue(typeof draft.title === 'string' && draft.title.trim(), 'Enter a label name');
+        replacement = { ...(existing ?? { id: nextLabelId(labels), created: new Date().toISOString() }),
+          title: draft.title.trim(), modified: new Date().toISOString() };
+        delete replacement.picture;
+        delete replacement.picture_frame;
+        if (draft.picture !== undefined) replacement.picture = draft.picture;
+        if (draft.picture_frame !== undefined) {
+          requireValue(draft.picture !== undefined, 'A label frame needs a picture');
+          replacement.picture_frame = validateFrame(draft.picture_frame);
+        }
+      } else { requireValue(existing, 'Choose an existing label to delete'); }
+      const nextLabels = existing ? labels.flatMap(label => labelKey(label.id) === id ? replacement ? [replacement] : [] : [label]) : [...labels, replacement!];
+      const tagsText = serialize(nextLabels, 2) + '\n';
+      parseLabels(tagsText);
+      const changes: TextChange[] = [];
+      if (existing && (!replacement || replacement.title !== existing.title)) {
+        requireValue(snapshot.unreadableEvents.length === 0, 'Resolve unreadable events before changing labels');
+        const current = await this.readArchive();
+        requireValue(current.unreadableEvents.length === 0, 'Resolve unreadable events before changing labels');
+        const originalEvents = new Map(snapshot.events.map(event => [event.filename, event]));
+        requireValue(current.events.length === originalEvents.size && current.events.every(event =>
+          originalEvents.get(event.filename)?.source === event.source), 'Events changed outside the app. Refresh before changing labels.', 'conflict');
+        for (const event of current.events) {
+          if (!event.tags.some(tag => tag.id === id)) continue;
+          const tags = event.tags.flatMap(tag => tag.id !== id ? [tag] : replacement ? [{ ...tag, title: replacement.title }] : []);
+          changes.push({ path: `moments/${event.filename}`, source: event.source, next: updateMetadata(event, { tags }) });
+        }
+      }
+      changes.push({ path: 'tags.json', source: snapshot.tagsSource, next: tagsText });
+      const result = await this.apply(changes);
+      return { ...result, value: replacement };
+    });
+  }
+
+  async readPicture(name: string, thumbnail = true): Promise<File> {
+    requireValue(safeName(name), 'Invalid picture name');
+    try {
+      const directory = await this.root.getDirectoryHandle('attachments');
+      let handle: FileSystemFileHandle;
+      try { handle = await directory.getFileHandle(thumbnail ? `${name}.thumb.jpg` : name); }
+      catch (error) {
+        if (!(error instanceof DOMException) || error.name !== 'NotFoundError' || !thumbnail) throw error;
+        handle = await directory.getFileHandle(name);
+      }
+      const file = await handle.getFile();
+      requireValue(file.size <= PICTURE_LIMIT, 'Picture exceeds 25 MB', 'limit-exceeded');
+      return file;
+    } catch (error) { throw failure(error); }
+  }
+
+  async importPicture(file: Blob, progress?: (stage: PictureStage) => void): Promise<MutationResult<string>> {
+    return this.exclusive(async () => {
+      await this.validateArchive();
+      const { image, thumbnail } = await processPicture(file, progress);
+      progress?.('writing');
+      const name = `${crypto.randomUUID()}.jpg`;
+      const affectedPaths: string[] = [];
+      try {
+        for (const [filename, blob] of [[name, image], [`${name}.thumb.jpg`, thumbnail]] as const) {
+          const path = `attachments/${filename}`;
+          await this.assertMissing(path);
+          affectedPaths.push(path);
+          await this.write(path, blob);
+        }
+        return { value: name, affectedPaths, recoveryPaths: [] };
+      } catch (cause) {
+        throw new ArchiveFailure('partial-change', `Picture import stopped: ${failure(cause).message} Partial attachments may remain; inspect affected files before retrying. No attachments were deleted.`, affectedPaths, [], { cause });
+      }
+    });
+  }
+}
