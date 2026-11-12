@@ -40,13 +40,13 @@ async function database(): Promise<IDBDatabase> {
   });
 }
 
-async function storedHandle(mode: IDBTransactionMode, handle?: FileSystemDirectoryHandle): Promise<FileSystemDirectoryHandle | null> {
+async function storedHandle(mode: IDBTransactionMode, handle?: FileSystemDirectoryHandle | null): Promise<FileSystemDirectoryHandle | null> {
   const db = await database();
   try {
     return await new Promise((resolve, reject) => {
       const transaction = db.transaction('workspace', mode);
       const store = transaction.objectStore('workspace');
-      const request = mode === 'readonly' ? store.get('folder') : store.put(handle, 'folder');
+      const request = mode === 'readonly' ? store.get('folder') : handle === null ? store.delete('folder') : store.put(handle, 'folder');
       let result: FileSystemDirectoryHandle | null = null;
       request.onsuccess = () => { if (mode === 'readonly') result = request.result ?? null; };
       transaction.oncomplete = () => resolve(result);
@@ -58,6 +58,11 @@ async function storedHandle(mode: IDBTransactionMode, handle?: FileSystemDirecto
 
 export async function rememberFolder(handle: FileSystemDirectoryHandle): Promise<void> {
   await storedHandle('readwrite', handle);
+}
+
+/** Forgets only the browser's remembered handle; the archive and filesystem permission remain untouched. */
+export async function forgetFolder(): Promise<void> {
+  await storedHandle('readwrite', null);
 }
 
 export async function restoreFolder(): Promise<FileSystemDirectoryHandle | null> {

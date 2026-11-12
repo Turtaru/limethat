@@ -2,7 +2,7 @@ import { Archive } from './archive';
 import type { LabelDraft, MutationResult } from './archive';
 import type { ArchiveEvent, ArchiveSummary, EventDraft } from './archive-format';
 import { ArchiveFailure, failure, permissionRequired } from './errors';
-import { chooseFolder, folderCapability, folderPermission, rememberFolder, requestFolderPermission, restoreFolder } from './folder-access';
+import { chooseFolder, folderCapability, folderPermission, forgetFolder, rememberFolder, requestFolderPermission, restoreFolder } from './folder-access';
 import type { PictureStage } from './pictures';
 
 export type WorkspaceState = 'unsupported' | 'no-folder' | 'permission-required' | 'loading' | 'ready' | 'error';
@@ -111,6 +111,20 @@ export class Workspace {
     finally { this.operation = null; }
   }
 
+  async disconnect(): Promise<void> {
+    this.start('closing');
+    try {
+      await forgetFolder();
+      this.archive = null;
+      this.summary = null;
+      this.pending = null;
+      this.permission = 'prompt';
+      this.persistenceWarning = null;
+      this.state = this.capability.supported ? 'no-folder' : 'unsupported';
+    } catch (error) { this.failed(error); }
+    finally { this.operation = null; }
+  }
+
   async refresh(): Promise<void> {
     this.start('refreshing');
     try {
@@ -152,6 +166,6 @@ export class Workspace {
   async readPicture(name: string, thumbnail = true): Promise<File> {
     if (!this.archive) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
     try { return await this.archive.readPicture(name, thumbnail); }
-    catch (error) { throw this.failed(error); }
+    catch (error) { throw permissionRequired(error) ? this.failed(error) : failure(error); }
   }
 }

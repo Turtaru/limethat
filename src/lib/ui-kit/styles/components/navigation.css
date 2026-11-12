@@ -1,0 +1,11 @@
+.ui-navigation { position: relative; display: flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-1); border: 1px solid var(--line); border-radius: 2rem; background: var(--panel); }
+.ui-navigation__indicator { position: absolute; top: 0; left: 0; border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 1.75rem; background: color-mix(in srgb, var(--accent) 22%, transparent); pointer-events: none; transition: transform var(--motion-duration) ease-in-out, width var(--motion-duration) ease-in-out, height var(--motion-duration) ease-in-out; }
+.ui-navigation__link { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; min-height: var(--target-size); padding: .375rem .75rem; border: 1px solid transparent; border-radius: 1.75rem; color: var(--muted); text-decoration: none; font-size: .8125rem; transition: color var(--motion-duration) ease-in-out, background var(--motion-duration) ease-in-out; }
+.ui-navigation__link[aria-current='page'] { color: var(--ink); }
+
+@media (hover: hover) and (pointer: fine) {
+  .ui-navigation__link:not([aria-current='page']):hover {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+}

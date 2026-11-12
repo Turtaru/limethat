@@ -203,6 +203,7 @@
   bind:this={viewport}
   class="viewport"
   class:editable={canEdit}
+  class:show-overflow={canEdit && !!gestureOutput}
   role={editable ? 'application' : 'img'}
   aria-roledescription={editable ? 'image framing' : undefined}
   aria-label={`${alt}: ${editable ? 'image framing; arrow keys move, plus and minus zoom' : 'framed image'}`}
@@ -215,6 +216,12 @@
   onlostpointercapture={pointerEnd}
   onkeydown={keyboard}
 >
+  {#if canEdit && gestureOutput && geometry.bounds && dimensions}
+    <img class="overflow-preview" {src} alt="" aria-hidden="true" draggable="false"
+      style:width={`${dimensions.width}px`} style:height={`${dimensions.height}px`}
+      style:transform={`translate(${geometry.bounds.x}px, ${geometry.bounds.y}px) scale(${geometry.bounds.width / dimensions.width})`} />
+  {/if}
+  <div class="image-clip">
   {#if src}
     {#key src}
       <img
@@ -233,13 +240,16 @@
       />
     {/key}
   {/if}
+  </div>
 </div>
 {#if problem}<p role="alert">{problem}</p>{/if}
 {#if onopen}<button type="button" disabled={!dimensions} onclick={() => onopen?.()}>Open whole image</button>{/if}
 
 <style>
-  .viewport { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; background: white; }
+  .viewport { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: inherit; background: var(--bg, white); }
+  .viewport.show-overflow { overflow: visible; z-index: 1; outline: 2px solid var(--muted, currentColor); }
+  .image-clip { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; z-index: 1; }
+  .overflow-preview { opacity: .35; }
   .viewport.editable { touch-action: none; cursor: grab; }
-  .viewport:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
   img { position: absolute; top: 0; left: 0; max-width: none; max-height: none; transform-origin: top left; pointer-events: none; user-select: none; transition: none; }
 </style>

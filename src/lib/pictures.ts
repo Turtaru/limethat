@@ -3,6 +3,10 @@ export { defaultFrame, pictureBounds, resizedFrame, zoomFrame } from './images/i
 import { ArchiveFailure, requireValue } from './errors';
 
 export type PictureStage = 'decoding' | 'encoding-image' | 'encoding-thumbnail' | 'writing';
+export type ProcessedPicture = { image: Blob; thumbnail: Blob };
+
+// A draft preview and its later import must use the same oriented JPEG, without encoding it twice.
+const processedPictures = new WeakMap<Blob, ProcessedPicture>();
 
 function jpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => canvas.toBlob(blob => {
@@ -18,8 +22,10 @@ function context(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 }
 
 /** Re-encodes the whole image with browser orientation handling; original EXIF and full-resolution bytes are not retained. */
-export async function processPicture(file: Blob, progress?: (stage: PictureStage) => void): Promise<{ image: Blob; thumbnail: Blob }> {
+export async function processPicture(file: Blob, progress?: (stage: PictureStage) => void): Promise<ProcessedPicture> {
   requireValue(file.size > 0 && file.size <= PICTURE_LIMIT, 'Picture must be nonempty and at most 25 MB', 'limit-exceeded');
+  const prepared = processedPictures.get(file);
+  if (prepared) return prepared;
   progress?.('decoding');
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   const canvas = document.createElement('canvas');
@@ -40,7 +46,9 @@ export async function processPicture(file: Blob, progress?: (stage: PictureStage
     thumbnail.height = Math.max(1, Math.floor(canvas.height * thumbRatio));
     context(thumbnail).drawImage(canvas, 0, 0, thumbnail.width, thumbnail.height);
     progress?.('encoding-thumbnail');
-    return { image, thumbnail: await jpeg(thumbnail, 0.8) };
+    const prepared = { image, thumbnail: await jpeg(thumbnail, 0.8) };
+    processedPictures.set(file, prepared);
+    return prepared;
   } finally {
     bitmap.close();
     canvas.width = canvas.height = thumbnail.width = thumbnail.height = 0;

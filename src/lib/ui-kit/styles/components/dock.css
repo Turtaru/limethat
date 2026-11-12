@@ -1,0 +1,30 @@
+.ui-dock {
+  position: fixed;
+  z-index: 5;
+  bottom: calc(.75rem + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: calc(100% - 2 * var(--page-gutter));
+  max-width: calc(var(--content-width) - 2 * var(--page-gutter));
+}
+.ui-dock .ui-navigation { flex: 1; min-width: 0; gap: 2px; padding: 2px; border-radius: 2rem; }
+.ui-dock .ui-navigation__link { padding: .375rem; line-height: 1.25rem; }
+.ui-dock__action { appearance: none; display: grid; place-items: center; flex-shrink: 0; width: 3.125rem; height: 3.125rem; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--ink); }
+.ui-dock__action svg { width: 1.5rem; height: 1.5rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ui-dock__action:disabled { opacity: .5; }
+.ui-dock__action { transition: border-color var(--motion-duration), color var(--motion-duration); }
+@supports ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
+  /* Keep the standard declaration last so the CSS optimizer retains it. */
+  .ui-dock .ui-navigation, .ui-dock__action { background: color-mix(in srgb, var(--panel) 65%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+}
+@media (hover: hover) and (pointer: fine) {
+  .ui-dock__action:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
+}
+body:has(dialog[open]) .ui-shell__footer > .ui-dock,
+body:has(dialog[open]) .ui-editor-page > .ui-dock,
+.ui-dialog[open]:has(~ .ui-dialog[open]) .ui-dock { visibility: hidden; }
+.ui-dialog__footer:has(.ui-dock) { padding: 0; border: 0; }
+.ui-dialog:has(.ui-dock) .ui-dialog__body { padding-bottom: var(--dock-clearance); scroll-padding-bottom: var(--dock-clearance); }

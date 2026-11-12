@@ -1,8 +1,8 @@
 # Limethat
 
-Headless folder-archive foundation: Svelte 5, strict TypeScript and Vite. Production location is this repository; the Android app and folder prototype remain untouched.
+Local folder-archive application: Svelte 5, strict TypeScript and Vite. Production location is this repository; the Android app and folder prototype remain untouched.
 
-**No actual application views yet.** Production renders a bare shell. Routing (`svelte-spa-router` 5), page layouts, visual design and transitions remain for the next phase. A reusable image-framing component spike and isolated harness are implemented; device validation and page integration remain pending. App icons and install-manifest metadata are configured. Offline support is deliberately deferred until the shell/assets are stable; there is currently no service worker or offline-ready claim.
+Events, search, detail, event editing, pictures, label selection/management/collections, archive settings and light/dark themes use the source UI kit in `src/lib/ui-kit/`. Hash routes use the already-installed `svelte-spa-router`. Production builds generate a versioned offline app-shell service worker; folder access and physical-device offline behavior still require manual validation. See [UI integration](docs/ui-integration.md).
 
 ## Development
 
@@ -20,17 +20,9 @@ Vite uses `/limethat/` for repository-path hosting. Development URL: `http://loc
 
 `npm run check` checks Svelte, TypeScript and check sources without executing tests. `npm test` runs the focused checks in `checks/`; **run only with user permission**. No tests run during build or deployment. Dependency audit currently reports two low-severity development-only advisories through the Svelte Vite plugin's `deepmerge` dependency, with no published fix; production dependencies have no reported advisories.
 
-Development alone includes an unstyled folder lifecycle harness. Its buttons invoke pickers/permission requests directly from user gestures. It exposes `window.limethat` for inspecting the headless API. Neither the harness nor that global is present in the production build. Use disposable archive copies. Development also includes a local-file image-framing harness; see [image framing](docs/image-framing.md) for its contract, device checklist and optional `npm run build:framing` HTTPS deployment artifact.
+Development runs the real application. Open/create an archive through Settings or the initial connection controls, using disposable archive copies for review. Picker and reconnect buttons invoke browser APIs directly from user gestures. No inspection global or unstyled lifecycle harness is mounted in the application.
 
-```js
-const workspace = window.limethat;
-const event = workspace.summary.events[0];
-const outcome = await workspace.updateEvent(event, {
-  title: 'Changed title', body: event.body,
-  startDate: event.startDate, endDate: event.endDate,
-  tags: event.tags, frames: event.frames,
-});
-```
+The separate `npm run build:framing` artifact still mounts only the local-file framing harness; see [image framing](docs/image-framing.md).
 
 Forms must supply complete drafts, including existing tags/frames; a label draft supplies its complete title/picture/frame state. Omitted label pictures/frames are removed. Preserve unknown embedded tag/frame properties when editing their known fields. Operations retain unknown top-level event metadata and label properties independently of the form.
 
@@ -43,7 +35,7 @@ Forms must supply complete drafts, including existing tags/frames; a label draft
 - `src/lib/images/`: pure Android-compatible frame math plus shared Svelte viewport/editor components. Parent-owned drafts and URLs; no storage, router or autosave coupling.
 - `src/lib/workspace.svelte.ts`: instantiate `Workspace` for a reactive session. It owns permission/operation state and the last successfully loaded archive, not unsaved drafts.
 
-`workspace.choose()` opens an archive; `choose(true)` initializes an empty folder; `restore()` retrieves the remembered handle without prompting; `reconnect()` requests permission. Call `choose` and `reconnect` directly from a click or equivalent gesture, without awaiting anything first. Cancellation leaves the workspace intact. Failed replacement loads retain the previous archive and summary. A pending permission-required replacement must be reconnected or replaced by another successful open before mutations.
+`workspace.choose()` opens an archive; `choose(true)` initializes an empty folder; `restore()` retrieves the remembered handle without prompting; `reconnect()` requests permission. Call `choose` and `reconnect` directly from a click or equivalent gesture, without awaiting anything first. `disconnect()` forgets the remembered handle before clearing the loaded session; it does not change archive files or revoke permission. The UI blocks closing while drafts or writes exist. Cancellation leaves the workspace intact. Failed replacement loads retain the previous archive and summary. A pending permission-required replacement must be reconnected or replaced by another successful open before mutations.
 
 Workspace mutations return a discriminated outcome:
 
@@ -76,11 +68,11 @@ npm run icons:generate
 
 This follows the standard [web app manifest icons](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest/Reference/icons) and [maskable icon](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/How_to/Define_app_icons#purpose) patterns. Install availability still depends on the browser, HTTPS and its criteria; icon setup does not provide offline caching.
 
-## Deployment and later PWA work
+## Deployment and PWA shell
 
-Enable GitHub Pages with the GitHub Actions source. `.github/workflows/pages.yml` builds/type-checks and uploads **only `dist/`**, then deploys the bare shell on pushes to `main` or manual dispatch. For another repository name, change Vite's `base`.
+Enable GitHub Pages with the GitHub Actions source. `.github/workflows/pages.yml` builds/type-checks and uploads **only `dist/`**, then deploys the application on pushes to `main` or manual dispatch. For another repository name, change Vite's `base`.
 
-Future routes use `svelte-spa-router` hash URLs; no route pages or custom router are implemented. Manifest start URL/scope already resolve relative to the base-aware manifest link; future service-worker registration must also use Vite's base URL. Generate complete precaching from the build output, including every lazy chunk; do not cache archive data or external media. Report offline readiness only after complete caching. Keep service workers out of development and require an intentional update/activation decision that preserves drafts.
+Routes use `svelte-spa-router` hash URLs (`#/events`, event UUID details, `#/labels`, label ID collections, and `#/settings`). Creation has dedicated `#/events/new` and `#/labels/new` pages; editing uses `#/events/:id/edit` and `#/labels/:id/edit`. They are not dialogs. Unsaved drafts stay in the current session across route navigation, not across reloads. Manifest links and service-worker registration use Vite's base URL. The build generates `dist/sw.js` from the complete output, including public assets and every chunk. Only those app assets are cached; archive data, external media and object URLs are not. Service workers are excluded from development and framing builds. Updates wait for the Settings action, which is disabled during drafts/operations; the worker also refuses activation while another Limethat tab is open. Browser/device offline readiness remains unverified.
 
 Folder handles and permission belong to the origin, not a project path. Another GitHub Pages project on the same hostname shares that security origin. Keep the origin stable; changing domains requires reconnecting. A PWA install will not grant filesystem permission or guarantee offline access to a moved/unavailable folder.
 

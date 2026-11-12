@@ -1,0 +1,13 @@
+:focus-visible, .ui-input:focus { border-color: var(--accent); }
+.ui-input[aria-invalid='true']:focus, .ui-button--danger:focus-visible { border-color: var(--danger); }
+.ui-button--primary:focus-visible { border-color: var(--ink); }
+.ui-button--quiet:focus-visible, a:not([class]):focus-visible, summary:focus-visible,
+label:has(> input:is([type='checkbox'], [type='radio']):focus-visible) {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: .25em;
+}
+.ui-label-row:focus-visible .ui-label-row__symbol,
+.ui-selected-label:has(button:focus-visible) { border-color: var(--accent); }
+.ui-label-row:focus-visible .ui-label-row__title,
+.ui-selected-label button:focus-visible { color: var(--accent); }

@@ -1,18 +1,97 @@
-<main>
-  {#if import.meta.env.MODE === 'framing'}
-    <h1>Limethat image framing harness</h1>
-  {:else}
-    <h1>Limethat</h1>
-    <p>Folder archive foundation. Application views are not installed yet.</p>
-    {#if import.meta.env.DEV}
-      {#await import('./dev/WorkspaceHarness.svelte') then { default: Harness }}
-        <Harness />
-      {/await}
-    {/if}
-  {/if}
-  {#if import.meta.env.DEV || import.meta.env.MODE === 'framing'}
-    {#await import('./dev/ImageFrameHarness.svelte') then { default: ImageHarness }}
-      <ImageHarness />
-    {/await}
-  {/if}
-</main>
+<script lang="ts">
+  import { onMount, setContext, tick } from 'svelte';
+  import Router, { router, push } from 'svelte-spa-router';
+  import { AppShell } from './lib/ui-kit';
+  import { Session, sessionKey } from './features/session.svelte';
+  import Events from './features/Events.svelte';
+  import Labels from './features/Labels.svelte';
+  import Settings from './features/Settings.svelte';
+  import NotFound from './features/NotFound.svelte';
+  import Connection from './features/Connection.svelte';
+  import Editors from './features/Editors.svelte';
+  import PictureViewer from './features/PictureViewer.svelte';
+  import AppDock from './features/AppDock.svelte';
+  import { labelKey } from './lib/archive-format';
+  import { pwa, startPwa } from './features/pwa.svelte';
+  const session = new Session();
+  setContext(sessionKey, session);
+  const routes = { '/': Events, '/events': Events, '/events/new': Editors, '/events/:id/edit': Editors, '/events/:id': Events, '/labels': Labels, '/labels/new': Editors, '/labels/:id/edit': Editors, '/labels/:id': Labels, '/settings': Settings, '*': NotFound };
+  const editorRoute = $derived(/^\/(events|labels)\/(new|[^/]+\/edit)$/.test(router.location));
+  let previousArchive: FileSystemDirectoryHandle | null = null;
+  const section = $derived(router.location.startsWith('/labels') ? 'labels' : router.location === '/settings' ? 'settings' : 'events');
+  const recordId = $derived(router.params && !Array.isArray(router.params) ? router.params.id : undefined);
+  const currentEvent = $derived(session.workspace.summary?.events.find(event => event.id.toLowerCase() === recordId?.toLowerCase()));
+  const currentLabel = $derived(session.workspace.summary?.labels.find(label => labelKey(label.id) === recordId));
+  function dockAction() {
+    if (section === 'settings') void session.refresh();
+    else if (section === 'labels') session.editLabel(currentLabel ?? null);
+    else session.editEvent(currentEvent ?? null);
+  }
+  onMount(() => {
+    if (import.meta.env.MODE === 'framing') return;
+    try { session.theme = localStorage.getItem('limethat-theme') === 'light' ? 'light' : 'dark'; } catch { /* Theme persistence is optional. */ }
+    void session.workspace.restore();
+    void startPwa();
+    const online = () => { pwa.online = navigator.onLine; };
+    online();
+    window.addEventListener('online', online); window.addEventListener('offline', online);
+    const unload = (event: BeforeUnloadEvent) => {
+      if (session.draftCount || session.workspace.operation) { event.preventDefault(); event.returnValue = ''; }
+    };
+    const navigate = (event: MouseEvent) => {
+      const anchor = event.target instanceof Element ? event.target.closest('a') : null;
+      const href = anchor?.getAttribute('href');
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !href?.startsWith('#/') || !anchor || anchor.hasAttribute('download') || (anchor.target && anchor.target !== '_self')) return;
+      event.preventDefault();
+      history.replaceState({ ...history.state, limethatFocus: href }, '');
+      void push(href);
+    };
+    window.addEventListener('beforeunload', unload);
+    document.addEventListener('click', navigate);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', online); window.removeEventListener('beforeunload', unload); document.removeEventListener('click', navigate); };
+  });
+  $effect(() => {
+    document.documentElement.dataset.theme = session.theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', session.theme === 'light' ? '#eff3ed' : '#171b18');
+  });
+  $effect(() => {
+    const archive = session.workspace.archive;
+    if (!archive) { previousArchive = null; return; }
+    if (archive.root !== previousArchive) {
+      previousArchive = archive.root;
+      session.reviewRequired = false;
+      session.notice = `Opened ${archive.root.name}.`;
+    }
+  });
+  let routeLoadedOnce = false;
+  async function routeLoaded() {
+    if (!routeLoadedOnce) { routeLoadedOnce = true; return; }
+    await tick();
+    const saved = history.state?.limethatFocus as string | undefined;
+    const target = saved ? document.querySelector<HTMLElement>(`main a[href="${CSS.escape(saved)}"]`) : null;
+    (target ?? document.querySelector<HTMLElement>('main'))?.focus({ preventScroll: true });
+  }
+</script>
+
+{#if import.meta.env.MODE === 'framing'}
+  <main><h1>Limethat image framing harness</h1>{#await import('./dev/ImageFrameHarness.svelte') then { default: Harness }}<Harness />{/await}</main>
+{:else if !session.workspace.capability.supported}
+  <main class="ui-shell"><p class="ui-error" role="alert">{session.workspace.capability.message}</p></main>
+{:else if !session.workspace.summary}
+  <AppShell><Settings /></AppShell>
+{:else}
+  <AppShell>
+    {#snippet footer()}
+      {#if !editorRoute}<AppDock {section} label={section === 'settings' ? 'Refresh archive' : `${(section === 'labels' ? currentLabel : currentEvent) ? 'Edit' : 'Create'} ${section === 'labels' ? 'label' : 'event'}`} icon={section === 'settings' ? 'reset' : (section === 'labels' ? currentLabel : currentEvent) ? 'edit' : 'create'} disabled={section === 'settings' ? !!session.workspace.operation || !session.workspace.capability.supported : !session.canWrite} onclick={dockAction} />{/if}
+    {/snippet}
+    <div class="ui-stack">
+      {#if session.notice}<p class={session.workspace.state === 'ready' ? 'ui-sr-only' : 'ui-status'} role="status">{session.notice}</p>{/if}
+      {#if router.location !== '/settings' && (session.workspace.state !== 'ready' || session.reviewRequired || session.workspace.persistenceWarning)}<Connection />{/if}
+      {#if session.workspace.summary}
+        {#if session.workspace.summary.unreadableEvents.length}<div class="ui-error" role="alert"><p>{session.workspace.summary.unreadableEvents.length} unreadable events; they are not included below. Label rename/delete is blocked until resolved.</p><ul>{#each session.workspace.summary.unreadableEvents as item}<li><code>{item.path}</code>: {item.message}</li>{/each}</ul></div>{/if}
+      {/if}
+      <Router {routes} restoreScrollState onRouteLoaded={routeLoaded} />
+    </div>
+  </AppShell>
+  <PictureViewer />
+{/if}

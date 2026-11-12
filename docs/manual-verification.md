@@ -21,7 +21,7 @@ Request permission before running `npm test`. `npm run check` and `npm run build
 
 3. Open `http://localhost:5173/limethat/` in emulator Chrome. Loopback is a secure context; no Wi-Fi CA setup is needed.
 4. Put a disposable archive **inside the emulator**. A Mac folder alone does not exercise Android folder access.
-5. Use the development-only lifecycle controls; inspect `window.limethat` for headless mutations and outcomes.
+5. Use the application connection controls and Settings, then review the events/labels screens and editors. No `window.limethat` global is mounted. See [UI integration](ui-integration.md) for the application review checklist.
 
 The prototype established localhost/adb access, not full round trips or persistent permissions. Physical-phone Wi-Fi connectivity was unresolved; do not change certificate trust handling to work around that network problem. `adb` is optional verification tooling, not installed or configured by this repository.
 
@@ -59,16 +59,16 @@ The prototype established localhost/adb access, not full round trips or persiste
 
 ## Static deployment and later views/offline
 
-- [ ] Enable Actions-based Pages and verify the `/limethat/` shell/assets over trusted HTTPS.
+- [ ] Enable Actions-based Pages and verify the `/limethat/` application/assets over trusted HTTPS.
 - [ ] Inspect manifest scope/start URL and every icon URL on `/limethat/`; confirm no request falls back to the hostname root.
 - [ ] Check SVG favicon and ICO fallback in browser tabs; check Safari's pinned-tab mask where supported.
 - [ ] Add to the iOS/iPadOS Home Screen; verify the opaque Apple icon and platform-applied corners.
 - [ ] Install/add to Home Screen on Android and desktop where supported; verify regular/maskable icons and that launch stays under `/limethat/`.
 - [ ] Preview maskable icons with circular, rounded-square and squircle masks; confirm the white lime glyph is not clipped.
 - [ ] On physical Android Chrome, verify actual picker support, writes, prompts and restart behavior. Desktop build success is not device evidence.
-- [ ] After real views arrive: verify hash deep links, unknown routes/IDs, reconnect/resume, guards for Back/Forward, focus and scroll restoration.
-- [ ] After offline caching arrives: verify complete precache readiness, intentional update activation and preservation of drafts.
+- [ ] Verify hash deep links, unknown routes/IDs, reconnect/resume, draft preservation during Back/Forward, focus and scroll restoration.
+- [ ] Verify complete precache readiness, intentional update activation, multi-tab update refusal and preservation of drafts.
 - [ ] After readiness, disconnect and open **every** route, including never-visited lazy views; read/edit local archives and display local pictures without network requests.
 - [ ] Offline relaunch still requires an available folder and usable permission; validate cache eviction/reconnection messaging.
 
-Icon/install metadata is provided, but installation on target devices remains unverified. No background access, continuous watching or offline-shell availability is claimed by the current foundation.
+Icon/install metadata and generated app-shell caching are implemented, but installation and offline relaunch on target devices remain unverified. No background archive access or continuous watching is provided.
