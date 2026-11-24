@@ -152,9 +152,11 @@
     };
     const navigate = (event: MouseEvent) => {
       const anchor = event.target instanceof Element ? event.target.closest('a') : null;
-      const href = anchor?.getAttribute('href');
+      let href = anchor?.getAttribute('href');
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !href?.startsWith('#/') || !anchor || anchor.hasAttribute('download') || (anchor.target && anchor.target !== '_self')) return;
       event.preventDefault();
+      const dockNavigation = !!anchor.closest('.ui-dock .ui-navigation');
+      if (dockNavigation && ((href === '#/events' && eventListRoute) || (href === '#/labels' && router.location === '/labels') || (href === '#/settings' && router.location === '/settings'))) return;
       if (eventListRoute || router.location === '/labels') {
         const labels = router.location === '/labels';
         const selector = labels ? '.ui-label-list > li' : '.ui-timeline > li';
@@ -167,6 +169,14 @@
           eventId: visible?.id, offset: visible?.getBoundingClientRect().top, focusHref: href,
         };
         history.replaceState({ ...history.state, [labels ? 'limethatLabelList' : 'limethatEventList']: { ...navigation.position } }, '');
+      }
+      if (router.location === '/settings') {
+        settingsPosition = { url: window.location.hash || '#/settings', y: window.scrollY };
+        history.replaceState({ ...history.state, limethatSettings: { ...settingsPosition } }, '');
+      }
+      if (dockNavigation) {
+        const position = href === '#/events' ? eventListNavigation.position : href === '#/labels' ? labelListNavigation.position : href === '#/settings' ? settingsPosition : null;
+        if (position) { href = position.url; pendingListPosition = position; }
       }
       if (anchor.hasAttribute('data-restore-event-list')) pendingListPosition = eventListNavigation.position;
       if (anchor.hasAttribute('data-restore-label-list')) pendingListPosition = labelListNavigation.position;
@@ -210,22 +220,24 @@
       previousArchive = archive.root;
       eventListNavigation.position = null;
       labelListNavigation.position = null;
+      settingsPosition = null;
       pendingListPosition = null;
-      history.replaceState({ ...history.state, limethatEventList: undefined, limethatLabelList: undefined }, '');
+      history.replaceState({ ...history.state, limethatEventList: undefined, limethatLabelList: undefined, limethatSettings: undefined }, '');
       session.reviewRequired = false;
       session.notice = `Opened ${archive.root.name}.`;
     }
   });
   let pendingListPosition: EventListPosition | null = null;
+  let settingsPosition: EventListPosition | null = null;
   let routeLoadedOnce = false;
   async function routeLoaded() {
     if (!routeLoadedOnce) { routeLoadedOnce = true; return; }
     await tick();
     const location = window.location.hash || '#/';
-    const stateKey = router.location === '/labels' ? 'limethatLabelList' : 'limethatEventList';
+    const stateKey = router.location === '/labels' ? 'limethatLabelList' : router.location === '/settings' ? 'limethatSettings' : 'limethatEventList';
     const position = pendingListPosition ?? history.state?.[stateKey] as EventListPosition | undefined;
     pendingListPosition = null;
-    if (position && position.url === location && (eventListRoute || router.location === '/labels')) {
+    if (position && position.url === location && (eventListRoute || router.location === '/labels' || router.location === '/settings')) {
       // View transitions pause painting, so waiting for an animation frame here can stall the return snapshot.
       if (!transitionRouteReady) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       if ((window.location.hash || '#/') !== location) return;
@@ -233,7 +245,7 @@
       history.replaceState({ ...history.state, [stateKey]: { ...position } }, '');
       const href = position.focusHref;
       const link = href ? document.querySelector<HTMLElement>(`main a[href="${CSS.escape(href)}"]`) : null;
-      (link ?? item?.querySelector<HTMLElement>('a'))?.focus({ preventScroll: true });
+      (link ?? item?.querySelector<HTMLElement>('a') ?? document.querySelector<HTMLElement>('main'))?.focus({ preventScroll: true });
       transitionRouteReady?.();
       return;
     }
@@ -252,7 +264,7 @@
 {:else}
   <AppShell>
     {#snippet footer()}
-      {#if !editorRoute}<AppDock {section} label={section === 'settings' ? 'Refresh archive' : `${(section === 'labels' ? currentLabel : currentEvent) ? 'Edit' : 'Create'} ${section === 'labels' ? 'label' : 'event'}`} icon={section === 'settings' ? 'reset' : (section === 'labels' ? currentLabel : currentEvent) ? 'edit' : 'create'} disabled={section === 'settings' ? !!session.workspace.operation || !session.workspace.capability.supported : !session.canWrite} onclick={dockAction} />{/if}
+      {#if !editorRoute}<AppDock {section} showScrollTop label={section === 'settings' ? 'Refresh archive' : `${(section === 'labels' ? currentLabel : currentEvent) ? 'Edit' : 'Create'} ${section === 'labels' ? 'label' : 'event'}`} icon={section === 'settings' ? 'reset' : (section === 'labels' ? currentLabel : currentEvent) ? 'edit' : 'create'} disabled={section === 'settings' ? !!session.workspace.operation || !session.workspace.capability.supported : !session.canWrite} onclick={dockAction} />{/if}
     {/snippet}
     <div class="ui-stack">
       {#if session.notice}<p class={session.workspace.state === 'ready' ? 'ui-sr-only' : 'ui-status'} role="status">{session.notice}</p>{/if}

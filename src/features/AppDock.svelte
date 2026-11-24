@@ -1,11 +1,12 @@
 <script lang="ts">
   import Dock from '../lib/ui-kit/ui/Dock.svelte';
+  import ScrollToTop from './ScrollToTop.svelte';
   import { Navigation } from '../lib/ui-kit';
   import { useSession } from './session.svelte';
-  let { section, label, icon = 'create', disabled = false, type = 'button', form, onclick }: {
+  let { section, label, icon = 'create', disabled = false, type = 'button', form, onclick, showScrollTop = false }: {
     section: 'events' | 'labels' | 'settings'; label: string;
     icon?: 'create' | 'edit' | 'save' | 'reset' | 'folder'; disabled?: boolean;
-    type?: 'button' | 'submit'; form?: string; onclick?: (event: MouseEvent) => void;
+    type?: 'button' | 'submit'; form?: string; onclick?: (event: MouseEvent) => void; showScrollTop?: boolean;
   } = $props();
   const session = useSession();
   function navigate(event: MouseEvent) {
@@ -16,5 +17,6 @@
   }
 </script>
 <Dock {label} {icon} {disabled} {type} {form} {onclick}>
+  {#if showScrollTop}<ScrollToTop />{/if}
   <Navigation onclick={navigate} items={[{ href: '#/events', label: 'Events', current: section === 'events' }, { href: '#/labels', label: 'Labels', current: section === 'labels' }, { href: '#/settings', label: 'Settings', current: section === 'settings' }]} />
 </Dock>
