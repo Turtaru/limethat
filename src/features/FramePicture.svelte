@@ -33,6 +33,6 @@
   });
 </script>
 
-<section class="ui-stack" aria-label={`Picture framing: ${alt}`}>
+<section class="ui-stack ui-detail-picture ui-picture-editor" aria-label={`Picture framing: ${alt}`}>
   <ImageFrameEditor src={url} {alt} {frame} editable={!disabled} busy={loading} {error} {onchange} {onselect} />
 </section>

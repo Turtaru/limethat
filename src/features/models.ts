@@ -35,7 +35,15 @@ export const labelCount = (summary: ArchiveSummary, id: string) => summary.event
 
 /** Builds complete archive drafts while retaining unknown embedded-label properties and nonvisible frames. */
 export function eventDraft(draft: EditorDraft, original: ArchiveEvent | null, summary: ArchiveSummary, imported: string[]): EventDraft {
-  let body = draft.description;
+  const text = description(draft.description);
+  let body = text;
+  if (original) {
+    if (text === description(original.body)) body = original.body;
+    else {
+      const references = original.body.match(/!\[[^\]]*\]\(\.\.\/attachments\/[A-Za-z0-9._-]+\)/g) ?? [];
+      body = [text, ...references].filter(Boolean).join('\n\n');
+    }
+  }
   const removed = new Set(draft.removedPictureIds);
   body = body.replace(/!\[[^\]]*\]\(\.\.\/attachments\/([A-Za-z0-9._-]+)\)/g, (reference, name: string) => removed.has(name) ? '' : reference);
   for (const name of imported) body += `\n\n![Picture](../attachments/${name})`;
@@ -51,7 +59,7 @@ export function eventDraft(draft: EditorDraft, original: ArchiveEvent | null, su
 
 export function editorInitial(original: ArchiveEvent | null) {
   return original ? {
-    title: original.title, date: original.startDate ?? '', endDate: original.endDate ?? '', description: original.body,
+    title: original.title, date: original.startDate ?? '', endDate: original.endDate ?? '', description: description(original.body),
     labelIds: [...new Set(original.tags.map(tag => tag.id))], pictures: photoNames(original.body).map(name => ({ id: name, name })),
   } : { date: new Date().toLocaleDateString('sv-SE') };
 }

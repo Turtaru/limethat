@@ -37,7 +37,7 @@
   });
 </script>
 
-<div bind:this={host} class="ui-archive-picture">
+<div bind:this={host} class="ui-archive-picture" class:ui-detail-picture={viewable}>
   {#if url}
     {#if viewable}<button class="ui-photo" type="button" aria-label={`Open picture: ${alt}`} onclick={() => { session.viewer = { name, alt, section: router.location.startsWith('/labels') ? 'labels' : 'events' }; }}><ImageFrameViewport src={url} {alt} {frame} /></button>
     {:else}<ImageFrameViewport src={url} {alt} {frame} />{/if}

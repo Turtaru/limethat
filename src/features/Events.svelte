@@ -8,6 +8,7 @@
   import AppDock from './AppDock.svelte';
   import { description, eventDates, dateLabel, labelHref, matchesEvent } from './models';
   import ArchivePicture from './ArchivePicture.svelte';
+  import Markdown from '../lib/ui-kit/ui/Markdown.svelte';
   import Timeline from './Timeline.svelte';
   let { params = {} }: { params?: Record<string, string> } = $props();
   const session = useSession();
@@ -45,11 +46,20 @@
   <div class="ui-stack">
     <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href="#/events">← All events</a>{#if event}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { confirmDelete = true; error = ''; }}>Delete</Button>{/if}</div>
     {#if event}
-      <PageHeading title={event.title} eyebrow={eventDates(event)} />
-      {#each photoNames(event.body) as name (name)}<ArchivePicture {name} alt={event.title} frame={event.frames[name]} viewable thumbnail={false} />{/each}
-      <p class="ui-description">{description(event.body) || 'No description added.'}</p>
-      <p class="ui-section-label">Labels</p>
-      <div class="ui-cluster">{#each event.tags as tag}<LabelLink name={tag.title} href={labelHref(tag.id)} />{/each}</div>
+      <div class="ui-detail-layout">
+        <div class="ui-stack ui-detail-media">
+          {#each photoNames(event.body) as name (name)}<ArchivePicture {name} alt={event.title} frame={event.frames[name]} viewable thumbnail={false} />{/each}
+          <section class="ui-detail-field" aria-label="Labels">
+            <h2 class="ui-section-label">Labels</h2>
+            <div class="ui-cluster">{#each event.tags as tag}<LabelLink name={tag.title} href={labelHref(tag.id)} />{/each}</div>
+          </section>
+        </div>
+        <div class="ui-stack ui-detail-content">
+          <div class="ui-detail-field"><p class="ui-section-label">Date</p><p class="ui-description">{eventDates(event)}</p></div>
+          <header class="ui-detail-field"><p class="ui-section-label">Title</p><h1 class="ui-detail-title">{event.title}</h1></header>
+          <section class="ui-detail-field" aria-label="Description"><h2 class="ui-section-label">Description</h2><Markdown source={description(event.body) || 'No description added.'} /></section>
+        </div>
+      </div>
     {:else if summary}<PageHeading title="Event not found" /><p class="ui-empty">This event is not in the connected archive.</p>{/if}
   </div>
 {:else}

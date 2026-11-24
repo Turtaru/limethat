@@ -20,6 +20,10 @@
   .ui-detail-toolbar .ui-button { padding-inline: 0; border: 0; }
   .ui-delete-action { color: var(--danger); }
   .ui-section-label { margin: var(--space-7) 0 0; font-size: .625rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .ui-detail-field { display: grid; gap: .625rem; min-width: 0; }
+  .ui-detail-field .ui-section-label { margin: 0; font-weight: 400; }
+  .ui-detail-field .ui-description { margin: 0; }
+  .ui-detail-title { margin: 0; font-size: clamp(1.75rem, 4vw, 2.25rem); font-weight: 500; line-height: 1.2; letter-spacing: -.04em; overflow-wrap: anywhere; }
   html { scroll-padding-bottom: var(--dock-clearance); }
   .ui-month { scroll-margin-top: 9rem; }
   .ui-dialog__header { background: var(--bg); }

@@ -100,13 +100,13 @@
   {@const page = eventPage}
   <EventEditor bind:draft={page.value} heading={page.original ? 'Edit event' : 'New event'} pictures={page.original ? photoNames(page.original.body).map(name => ({ id: name, name })) : []} {labels} disabled={!session.canWrite || page.blocked} preparing={page.pictures.pending > 0} onsave={saveEvent} oncancel={cancel}>
     {#snippet pictureEditor(locked)}
-      {#each photoNames(page.value.description).filter(name => !page.value.removedPictureIds.includes(name)) as name (name)}
+      {#each photoNames(page.original?.body ?? '').filter(name => !page.value.removedPictureIds.includes(name)) as name (name)}
         <FramePicture {name} alt={`${page.value.title || 'Event'}: ${name}`} frame={page.frames[name]} pictures={page.pictures} disabled={locked} onchange={frame => { page.frames = { ...page.frames, [name]: { ...page.frames[name], ...frame } }; }} onselect={file => { page.value.removedPictureIds = [...page.value.removedPictureIds, name]; page.value.pictures = [...page.value.pictures, file]; }} />
       {/each}
       {#each page.value.pictures as file (file)}
         <FramePicture {file} alt={file.name} frame={page.pictures.frame(file)} pictures={page.pictures} disabled={locked} onchange={frame => page.pictures.frames.set(file, frame)} onselect={replacement => { page.value.pictures = page.value.pictures.map(current => current === file ? replacement : current); }} />
       {/each}
-      {#if !page.value.pictures.length && !photoNames(page.value.description).some(name => !page.value.removedPictureIds.includes(name))}
+      {#if !page.value.pictures.length && !photoNames(page.original?.body ?? '').some(name => !page.value.removedPictureIds.includes(name))}
         <FramePicture alt={page.value.title || 'Event picture'} pictures={page.pictures} disabled={locked} onchange={() => {}} onselect={file => { page.value.pictures = [file]; }} />
       {/if}
     {/snippet}

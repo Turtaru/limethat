@@ -32,9 +32,11 @@
   <div class="ui-stack">
     <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href="#/labels">← All labels</a>{#if label}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { error = ''; confirmDelete = true; }}>Delete</Button>{/if}</div>
     {#if label}
-      <PageHeading title={label.title} eyebrow="Label collection" />
       {@const name = pictureName(label.picture)}
-      {#if name}<ArchivePicture {name} alt={label.title} frame={label.picture_frame} viewable thumbnail={false} />{/if}
+      <div class="ui-detail-layout">
+        {#if name}<div class="ui-stack ui-detail-media"><ArchivePicture {name} alt={label.title} frame={label.picture_frame} viewable thumbnail={false} /></div>{/if}
+        <header class="ui-detail-field ui-detail-content"><p class="ui-section-label">Label name</p><h1 class="ui-detail-title">{label.title}</h1></header>
+      </div>
       <div class="ui-summary">{events.length} events with this label</div>
       <Timeline {events} />
     {:else if summary}<PageHeading title="Label not found" /><p class="ui-empty">This label is not in the connected archive.</p>{/if}

@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import EmojiPicker from './EmojiPicker.svelte';
   import Button from '../ui/Button.svelte';
   import EditorPage from '../ui/EditorPage.svelte';
+  import Dialog from '../ui/Dialog.svelte';
   import Field from '../ui/Field.svelte';
   import SelectedLabel from '../ui/SelectedLabel.svelte';
   import LabelPicker from './LabelPicker.svelte';
@@ -14,6 +16,16 @@
   } = $props();
   let picture = $state<HTMLInputElement>();
   let pickerOpen = $state(false);
+  let emojiPickerOpen = $state(false);
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  const firstGrapheme = $derived(segmenter.segment(draft.title)[Symbol.iterator]().next().value?.segment ?? '');
+  const titleEmoji = $derived(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u.test(firstGrapheme) ? firstGrapheme : '');
+  const titleText = $derived(titleEmoji ? draft.title.slice(titleEmoji.length).trimStart() : draft.title);
+
+  function setTitleEmoji(emoji: string) {
+    draft.title = emoji ? `${emoji} ${titleText}` : titleText;
+    emojiPickerOpen = false;
+  }
   let saving = $state(false);
   let error = $state('');
   let errors = $state<Record<string, string>>({});
@@ -56,7 +68,12 @@
     {/if}
     {#if pictureEditor}{@render pictureEditor(saving || disabled)}{/if}
     <Field label="Title" error={errors.title}>
-      {#snippet children(control)}<input class="ui-input" id={control.id} required bind:value={draft.title} aria-describedby={control.describedby} aria-invalid={control.invalid} disabled={saving}>{/snippet}
+      {#snippet children(control)}
+        <div class="ui-title-input">
+          <button type="button" class="ui-title-input__emoji" aria-label={titleEmoji ? `Change title emoji: ${titleEmoji}` : 'Choose title emoji'} aria-haspopup="dialog" disabled={saving} onclick={() => { emojiPickerOpen = true; }}>{titleEmoji || '☺'}</button>
+          <input class="ui-input" id={control.id} required value={titleText} oninput={(event) => { draft.title = `${titleEmoji ? `${titleEmoji} ` : ''}${event.currentTarget.value}`; }} aria-describedby={control.describedby} aria-invalid={control.invalid} disabled={saving}>
+        </div>
+      {/snippet}
     </Field>
     <Field label="Start date" error={errors.date}>
       {#snippet children(control)}<input class="ui-input" id={control.id} type="date" min="0001-01-01" max="9999-12-31" bind:value={draft.date} aria-describedby={control.describedby} aria-invalid={control.invalid} disabled={saving}>{/snippet}
@@ -65,14 +82,14 @@
       {#snippet children(control)}<input class="ui-input" id={control.id} type="date" min="0001-01-01" max="9999-12-31" bind:value={draft.endDate} aria-describedby={control.describedby} aria-invalid={control.invalid} disabled={saving}>{/snippet}
     </Field>
     <Field label="Description">
-      {#snippet children(control)}<textarea class="ui-input" id={control.id} bind:value={draft.description} disabled={saving}></textarea>{/snippet}
+      {#snippet children(control)}<textarea class="ui-input ui-input--description" id={control.id} bind:value={draft.description} disabled={saving}></textarea>{/snippet}
     </Field>
     <fieldset class="ui-stack ui-fieldset" disabled={saving}>
       <legend>Labels</legend>
       <div class="ui-cluster">
         {#each labels.filter(label => draft.labelIds.includes(label.id)) as label (label.id)}<SelectedLabel name={label.name} onremove={() => { draft.labelIds = draft.labelIds.filter(id => id !== label.id); }} />{/each}
+        <Button onclick={() => { pickerOpen = true; }}>Add labels</Button>
       </div>
-      <Button onclick={() => { pickerOpen = true; }}>Add labels</Button>
     </fieldset>
     {#if error}<p class="ui-error" role="alert">{error}</p>{/if}
     {#if disabled}<p class="ui-error">Saving is unavailable. Resolve the archive status before retrying. Your draft remains here.</p>{/if}
@@ -84,3 +101,11 @@
   {/snippet}
 </EditorPage>
 <LabelPicker bind:open={pickerOpen} {labels} bind:selected={draft.labelIds} dock={renderDock} />
+<Dialog bind:open={emojiPickerOpen} title="Choose title emoji" variant="sheet">
+  <div class="ui-stack">
+    {#if emojiPickerOpen}
+      <EmojiPicker selected={titleEmoji} onselect={setTitleEmoji} />
+    {/if}
+    <div class="ui-emoji-section"><Button disabled={!titleEmoji} onclick={() => setTitleEmoji('')}>Remove emoji</Button></div>
+  </div>
+</Dialog>

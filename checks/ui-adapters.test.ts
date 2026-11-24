@@ -39,7 +39,7 @@ function fixture() {
     events: [original], warnings: [], unreadableEvents: [],
   };
   const draft: EventDraft = {
-    title: original.title, date: '2024', endDate: '2024-02', description: original.body,
+    title: original.title, date: '2024', endDate: '2024-02', description: description(original.body),
     labelIds: original.tags.map(tag => tag.id), pictures: [], removedPictureIds: [],
   };
   return { original, summary, draft };
@@ -66,6 +66,37 @@ test('picture removal changes references only and imports append without replaci
   assert.ok(result.body.startsWith('Keep **Markdown**.'));
   assert.deepEqual(result.frames, original.frames);
   assert.ok(original.body.includes('one.jpg'));
+});
+
+test('editor hides photo markup and preserves the original body when prose is unchanged', () => {
+  const { original, summary, draft } = fixture();
+  original.body = 'Keep **Markdown**.\n\n## Photos\n\n![one](../attachments/one.jpg)\n![two](../attachments/two.jpg)';
+  const initial = editorInitial(original);
+  assert.equal(initial.description, 'Keep **Markdown**.');
+  assert.deepEqual(initial.pictures?.map(item => item.id), ['one.jpg', 'two.jpg']);
+  draft.description = initial.description!;
+  assert.equal(eventDraft(draft, original, summary, []).body, original.body);
+});
+
+test('editing or clearing prose retains hidden pictures and their original alt text', () => {
+  const { original, summary, draft } = fixture();
+  for (const text of ['Updated **Markdown**.', '']) {
+    draft.description = text;
+    const result = eventDraft(draft, original, summary, []);
+    assert.equal(description(result.body), text);
+    assert.deepEqual(photoNames(result.body), ['one.jpg', 'two.jpg']);
+    assert.ok(result.body.includes('![one](../attachments/one.jpg)'));
+    assert.ok(result.body.includes('![two](../attachments/two.jpg)'));
+  }
+});
+
+test('description edits cannot replace pictures, but picture controls can', () => {
+  const { original, summary, draft } = fixture();
+  draft.description = 'New text\n\n![changed](../attachments/other.jpg)';
+  draft.removedPictureIds = ['one.jpg'];
+  const result = eventDraft(draft, original, summary, ['replacement.jpg']);
+  assert.equal(description(result.body), 'New text');
+  assert.deepEqual(photoNames(result.body), ['two.jpg', 'replacement.jpg']);
 });
 
 test('selection preserves duplicate embedded-tag properties and removes only unselected IDs', () => {
