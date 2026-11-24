@@ -3,6 +3,7 @@
   import { photoNames } from '../lib/archive-format';
   import type { ArchiveEvent } from '../lib/archive-format';
   import ArchivePicture from './ArchivePicture.svelte';
+  import { eventPhotoTransition } from './event-photo-transition.svelte';
   import { eventHref, eventDates, dateLabel, description, timelineGroups } from './models';
   import { activityCounts, activityDays, activityTarget } from './activity';
   let { events, showActivity = false, picturesActive = true }: { events: ArchiveEvent[]; showActivity?: boolean; picturesActive?: boolean } = $props();
@@ -37,8 +38,9 @@
       <ol class="ui-timeline">
         {#each group.events as event (event.id)}
           {@const photo = photoNames(event.body)[0]}
+          {@const transitioning = showActivity && picturesActive && eventPhotoTransition.returning && eventPhotoTransition.eventId === event.id}
           <li id={`${idPrefix}event-${event.id}`} tabindex="-1">
-            {#snippet image()}<ArchivePicture name={photo} alt={event.title} frame={event.frames[photo]} active={picturesActive} />{/snippet}
+            {#snippet image()}<ArchivePicture name={photo} alt={event.title} frame={event.frames[photo]} active={picturesActive} transitionName={transitioning ? 'event-photo' : undefined} onready={transitioning ? eventPhotoTransition.ready ?? undefined : undefined} />{/snippet}
             <EventCard href={eventHref(event.id)} title={event.title} date={event.startDate ?? undefined} dateLabel={eventDates(event)} description={description(event.body)} labels={event.tags.map(tag => tag.title)} picture={photo ? image : undefined} />
           </li>
         {/each}

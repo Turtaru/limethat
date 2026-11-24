@@ -8,6 +8,7 @@
   import ArchivePicture from './ArchivePicture.svelte';
   import Markdown from '../lib/ui-kit/ui/Markdown.svelte';
   import { eventListNavigation } from './event-list-navigation.svelte';
+  import { eventPhotoTransition } from './event-photo-transition.svelte';
   let { params = {} }: { params?: Record<string, string> } = $props();
   const session = useSession();
   const summary = $derived(session.workspace.summary);
@@ -33,7 +34,10 @@
     {#if event}
       <div class="ui-detail-layout">
         <div class="ui-stack ui-detail-media">
-          {#each photoNames(event.body) as name (name)}<ArchivePicture {name} alt={event.title} frame={event.frames[name]} viewable thumbnail={false} />{/each}
+          {#each photoNames(event.body) as name, index (name)}
+            {@const transitioning = index === 0 && !eventPhotoTransition.returning && eventPhotoTransition.eventId === event.id}
+            <ArchivePicture {name} alt={event.title} frame={event.frames[name]} viewable transitionName={transitioning ? 'event-photo' : undefined} onready={transitioning ? eventPhotoTransition.ready ?? undefined : undefined} />
+          {/each}
           <section class="ui-detail-field" aria-label="Labels">
             <h2 class="ui-section-label">Labels</h2>
             <div class="ui-cluster">{#each event.tags as tag}<LabelLink name={tag.title} href={labelHref(tag.id)} />{/each}</div>
@@ -41,7 +45,7 @@
         </div>
         <div class="ui-stack ui-detail-content">
           <div class="ui-detail-field"><p class="ui-section-label">Date</p><p class="ui-description">{eventDates(event)}</p></div>
-          <header class="ui-detail-field"><p class="ui-section-label">Title</p><h1 class="ui-detail-title">{event.title}</h1></header>
+          <header class="ui-detail-field"><p class="ui-section-label">Title</p><h1 class="ui-detail-title" tabindex="-1" style:view-transition-name={!eventPhotoTransition.returning && eventPhotoTransition.eventId === event.id ? 'event-title' : 'none'}>{event.title}</h1></header>
           <section class="ui-detail-field" aria-label="Description"><h2 class="ui-section-label">Description</h2><Markdown source={description(event.body) || 'No description added.'} /></section>
         </div>
       </div>

@@ -1,4 +1,19 @@
 @layer components {
+  .ui-photo-transition::view-transition-old(root) { display: none; }
+  .ui-photo-transition::view-transition-new(root),
+  .ui-photo-transition::view-transition-group(root) { animation: none; }
+  .ui-photo-transition::view-transition-group(event-photo),
+  .ui-photo-transition::view-transition-group(event-title) { animation-duration: 300ms; animation-timing-function: ease-in-out; }
+  .ui-photo-transition::view-transition-old(event-photo),
+  .ui-photo-transition::view-transition-new(event-photo) { height: 100%; animation-duration: 300ms; animation-timing-function: ease-in-out; }
+  .ui-photo-transition::view-transition-old(event-title),
+  .ui-photo-transition::view-transition-new(event-title) { animation-duration: 300ms; animation-timing-function: ease-in-out; object-fit: contain; object-position: left top; }
+  .ui-event-card__title, .ui-detail-title { width: fit-content; max-width: 100%; }
+  @media (prefers-reduced-motion: reduce) {
+    .ui-photo-transition::view-transition-group(*),
+    .ui-photo-transition::view-transition-old(*),
+    .ui-photo-transition::view-transition-new(*) { animation: none !important; }
+  }
   .ui-route-views { position: relative; }
   .ui-cached-view--inactive { content-visibility: hidden; position: absolute; inset: 0 0 auto; block-size: 0; overflow: clip; }
   @supports not (content-visibility: hidden) {

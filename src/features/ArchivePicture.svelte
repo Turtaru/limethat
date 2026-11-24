@@ -1,15 +1,17 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { eventPhotoTransition, loadedThumbnails } from './event-photo-transition.svelte';
   import { observeVisibility } from '../lib/visibility';
   import { router } from 'svelte-spa-router';
   import ImageFrameViewport from '../lib/images/ImageFrameViewport.svelte';
   import type { PictureFrame } from '../lib/archive-format';
   import { useSession } from './session.svelte';
 
-  let { name, alt, frame, thumbnail = true, viewable = false, active = true }: {
-    name: string; alt: string; frame?: PictureFrame; thumbnail?: boolean; viewable?: boolean; active?: boolean;
+  let { name, alt, frame, thumbnail = true, viewable = false, active = true, transitionName, onready }: {
+    name: string; alt: string; frame?: PictureFrame; thumbnail?: boolean; viewable?: boolean; active?: boolean; transitionName?: string; onready?: () => void;
   } = $props();
   const session = useSession();
+  let handoff = untrack(() => transitionName ? { name, archive: session.workspace.archive, file: eventPhotoTransition.file } : null);
   let host: HTMLDivElement;
   let visible = $state(false);
   let url = $state('');
@@ -20,23 +22,31 @@
   $effect(() => {
     const archive = session.workspace.archive;
     const source = name;
-    const load = visible && active;
+    if (!active) handoff = null;
+    else if (!handoff) handoff = untrack(() => eventPhotoTransition.returning && eventPhotoTransition.name === source
+      ? { name: source, archive, file: eventPhotoTransition.file } : null);
+    const transferred = handoff?.name === source && handoff.archive === archive ? handoff.file : null;
+    const load = active && (!!transferred || visible);
     let current = true;
     let owned = '';
     url = ''; error = '';
     if (archive && load) {
-      void session.workspace.readPicture(source, thumbnail).then(file => {
+      const show = (file: File) => {
         if (!current) return;
         owned = URL.createObjectURL(file); url = owned;
-      }).catch(cause => { if (current) error = cause instanceof Error ? cause.message : 'Picture unavailable.'; });
+        if (thumbnail) loadedThumbnails.set(host, file);
+      };
+      if (transferred) show(transferred);
+      else void session.workspace.readPicture(source, thumbnail).then(show)
+        .catch(cause => { if (current) error = cause instanceof Error ? cause.message : 'Picture unavailable.'; });
     }
-    return () => { current = false; if (owned) URL.revokeObjectURL(owned); };
+    return () => { current = false; loadedThumbnails.delete(host); if (owned) URL.revokeObjectURL(owned); };
   });
 </script>
 
-<div bind:this={host} class="ui-archive-picture" class:ui-detail-picture={viewable}>
+<div bind:this={host} class="ui-archive-picture" data-picture-name={name} class:ui-detail-picture={viewable} style:view-transition-name={transitionName ?? 'none'}>
   {#if url}
-    {#if viewable}<button class="ui-photo" type="button" aria-label={`Open picture: ${alt}`} onclick={() => { session.viewer = { name, alt, section: router.location.startsWith('/labels') ? 'labels' : 'events' }; }}><ImageFrameViewport src={url} {alt} {frame} fadeIn /></button>
-    {:else}<ImageFrameViewport src={url} {alt} {frame} fadeIn />{/if}
+    {#if viewable}<button class="ui-photo" type="button" aria-label={`Open picture: ${alt}`} onclick={() => { session.viewer = { name, alt, section: router.location.startsWith('/labels') ? 'labels' : 'events' }; }}><ImageFrameViewport src={url} {alt} {frame} fadeIn={!transitionName} onload={onready} /></button>
+    {:else}<ImageFrameViewport src={url} {alt} {frame} fadeIn={!transitionName} onload={onready} />{/if}
   {:else if error}<p class="ui-error" role="alert">{error}</p>{/if}
 </div>

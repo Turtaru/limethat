@@ -16,8 +16,9 @@
     onchange?: (frame: ImageFrame) => void;
     onopen?: () => void;
     onreadychange?: (ready: boolean) => void;
+    onload?: () => void;
   }
-  let { src, alt, frame = null, editable = false, fadeIn = false, onchange, onopen, onreadychange }: Props = $props();
+  let { src, alt, frame = null, editable = false, fadeIn = false, onchange, onopen, onreadychange, onload }: Props = $props();
   let viewport: HTMLDivElement;
   let image = $state<HTMLImageElement>();
   let width = $state(0);
@@ -81,6 +82,9 @@
 
   $effect(() => {
     if (editable) return on(viewport, 'wheel', wheel, { passive: false });
+  });
+  $effect(() => {
+    if (geometry.bounds) onload?.();
   });
 
   onMount(() => {
