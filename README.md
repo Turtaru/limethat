@@ -52,3 +52,11 @@ The code is the reference for implementation details. These notes cover constrai
 
 - [Archive compatibility and recovery](docs/archive-compatibility.md): Android format, metadata preservation, conflict detection, and non-atomic writes.
 - [Image framing](docs/image-framing.md): Android-compatible coordinates and non-destructive picture positioning.
+
+## License
+
+Limethat is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, modify, and share it for noncommercial purposes, including personal use. The license also permits use by the noncommercial organizations it lists. Commercial use requires separate permission.
+
+The software is provided **as is**, without warranty or liability to the extent permitted by law. Use it at your own risk.
+
+This is source-available software, not open source. Third-party dependencies remain under their own licenses.
