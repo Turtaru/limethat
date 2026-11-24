@@ -1,6 +1,6 @@
 <script lang="ts">
   import { router, replace } from 'svelte-spa-router';
-  import { Button, Dialog, Field, LabelRow, PageHeading } from '../lib/ui-kit';
+  import { Button, Dialog, Field, LabelRow, PageHeading, ResultCount } from '../lib/ui-kit';
   import { labelKey } from '../lib/archive-format';
   import { useSession } from './session.svelte';
   import Connection from './Connection.svelte';
@@ -42,9 +42,9 @@
 {:else}
   <div class="ui-stack ui-label-directory">
     <h1 class="ui-sr-only">Labels</h1>
-    <div class="ui-timeline-toolbar ui-timeline-toolbar--labels">
+    <div class="ui-timeline-toolbar ui-timeline-toolbar--with-count">
       <div class="ui-search ui-search--compact"><Field label="Search labels">{#snippet children(control)}<input class="ui-input" id={control.id} type="search" bind:value={query} placeholder="Search labels" oninput={() => { history.replaceState(history.state, '', `#/labels${query ? `?q=${encodeURIComponent(query)}` : ''}`); }}>{/snippet}</Field></div>
-      <p class="ui-summary" role="status">{matches.length} labels</p>
+      <ResultCount count={matches.length} singular="label" />
     </div>
     <ul class="ui-label-list">
       {#each matches as item (labelKey(item.id))}

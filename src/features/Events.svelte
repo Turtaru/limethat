@@ -1,7 +1,7 @@
 <script lang="ts">
   import { router, replace } from 'svelte-spa-router';
   import { tick } from 'svelte';
-  import { Button, Dialog, Field, LabelLink, PageHeading } from '../lib/ui-kit';
+  import { Button, Dialog, Field, LabelLink, PageHeading, ResultCount } from '../lib/ui-kit';
   import { photoNames } from '../lib/archive-format';
   import { useSession } from './session.svelte';
   import Connection from './Connection.svelte';
@@ -55,10 +55,10 @@
 {:else}
   <div class="ui-stack">
     <h1 class="ui-sr-only">Events</h1>
-    <div class="ui-timeline-toolbar">
+    <div class="ui-timeline-toolbar ui-timeline-toolbar--with-count">
       <div class="ui-search ui-search--compact"><Field label="Search events">{#snippet children(control)}<input id={control.id} class="ui-input" type="search" placeholder="Search events" bind:value={query} oninput={search}>{/snippet}</Field><Button class="ui-calendar-button" aria-label="Jump to date" title="Jump to date" disabled={!months.length} onclick={() => { month = months[0]; dateOpen = true; }}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M8 3v4m8-4v4M4 11h16" /></svg></Button></div>
+      <ResultCount count={matches.length} singular="event" />
     </div>
-    {#if query.trim()}<p class="ui-summary" role="status">{matches.length} {matches.length === 1 ? 'event' : 'events'} found</p>{/if}
     <Timeline events={matches} showActivity />
   </div>
 {/if}

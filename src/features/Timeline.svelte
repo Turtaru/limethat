@@ -4,10 +4,17 @@
   import type { ArchiveEvent } from '../lib/archive-format';
   import ArchivePicture from './ArchivePicture.svelte';
   import { eventHref, eventDates, dateLabel, description, timelineGroups } from './models';
-  import { activityCounts, activityDays } from './activity';
+  import { activityCounts, activityDays, activityTarget } from './activity';
   let { events, showActivity = false }: { events: ArchiveEvent[]; showActivity?: boolean } = $props();
   const counts = $derived(activityCounts(showActivity ? events : []));
   const groups = $derived(timelineGroups(events));
+  function jumpToDay(date: string) {
+    const id = activityTarget(events, date);
+    const target = id ? document.getElementById(id) : null;
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: 'start' });
+  }
 </script>
 <div class="ui-stack">
   {#each groups as group, index (group.events[0].id)}
@@ -16,7 +23,7 @@
       {#if showActivity && year && (index === 0 || year !== groups[index - 1].events[0].startDate?.slice(0, 4))}
         <section class="ui-year-activity" aria-label={`${year} activity`}>
           <h2 class="ui-year-activity__title">{year}</h2>
-          <ActivityGrid title={year} days={activityDays(year, counts)} showCaption={false} />
+          <ActivityGrid title={year} days={activityDays(year, counts)} showCaption={false} onselect={jumpToDay} />
         </section>
       {/if}
       <h2 class="ui-month" id={`month-${group.month}`} tabindex="-1">{group.events[0].startDate ? dateLabel(group.month) : 'Undated'}</h2>

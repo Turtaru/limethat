@@ -10,6 +10,12 @@ export function activityCounts(events: ArchiveEvent[]): Map<string, number> {
   return counts;
 }
 
+export function activityTarget(events: ArchiveEvent[], date: string): string | undefined {
+  if (date.length !== 10) return undefined;
+  const event = events.find(event => event.startDate === date);
+  return event ? `event-${event.id}` : undefined;
+}
+
 export function activityDays(period: string, counts: ReadonlyMap<string, number>): { date: string; count: number }[] {
   validateDate(period);
   if (period.length !== 4 && period.length !== 7) throw new Error('Activity period must be YYYY or YYYY-MM');

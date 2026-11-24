@@ -2,12 +2,12 @@
   .ui-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   .ui-archive-picture { width: 100%; min-width: 0; aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--radius-photo); background: var(--bg); }
   .ui-archive-picture > p { margin: 0; padding: var(--space-3); }
-  .ui-timeline > li { scroll-margin-top: var(--space-4); }
+  .ui-timeline > li { scroll-margin-top: 9rem; }
   .ui-timeline > li:focus .ui-event-card__link { border-color: var(--accent); }
   .ui-section > h2 { margin: 0; font-size: 1.375rem; font-weight: 500; }
   .ui-error code { overflow-wrap: anywhere; }
   .ui-timeline-toolbar { position: sticky; top: 0; z-index: 2; padding: var(--space-4) var(--page-gutter); margin-inline: calc(-1 * var(--page-gutter)); background: var(--bg); border-bottom: 1px solid var(--line); }
-  .ui-timeline-toolbar--labels { border-bottom: 0; }
+  .ui-timeline-toolbar--with-count { border-bottom: 0; }
   .ui-label-directory { gap: 0; }
   .ui-label-directory .ui-label-list > li:first-child .ui-label-row { padding-top: var(--space-2); }
   .ui-timeline-toolbar .ui-summary { margin: var(--space-4) 0 0; font-size: .6875rem; }
@@ -21,7 +21,7 @@
   .ui-delete-action { color: var(--danger); }
   .ui-section-label { margin: var(--space-7) 0 0; font-size: .625rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
   html { scroll-padding-bottom: var(--dock-clearance); }
-  .ui-month { scroll-margin-top: 7rem; }
+  .ui-month { scroll-margin-top: 9rem; }
   .ui-dialog__header { background: var(--bg); }
   .ui-editor-page { overflow-x: clip; overflow-clip-margin: var(--page-gutter); }
   .ui-editor-page__title { margin: var(--space-4) 0 1.375rem; font-size: 1.5rem; line-height: 1.3; font-weight: 500; letter-spacing: -.025em; }

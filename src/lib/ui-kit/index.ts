@@ -2,6 +2,7 @@ export { default as AppShell } from './ui/AppShell.svelte';
 export { default as Button } from './ui/Button.svelte';
 export { default as Field } from './ui/Field.svelte';
 export { default as PageHeading } from './ui/PageHeading.svelte';
+export { default as ResultCount } from './ui/ResultCount.svelte';
 export { default as EventCard } from './ui/EventCard.svelte';
 export { default as LabelRow } from './ui/LabelRow.svelte';
 export { default as LabelLink } from './ui/LabelLink.svelte';
