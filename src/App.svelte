@@ -116,8 +116,10 @@
     return true;
   }
   function openEvent(href: string, anchor: HTMLAnchorElement | null, update: () => void | Promise<unknown>): boolean {
-    const kind = router.location === '/labels' ? 'label' : 'event';
-    if ((!eventListRoute && router.location !== '/labels') || !anchor) return false;
+    if (!anchor || anchor.closest('[inert]')) return false;
+    const labelDirectory = router.location === '/labels' && !!anchor.closest('.ui-label-list');
+    if (!labelDirectory && !anchor.closest('.ui-timeline')) return false;
+    const kind = labelDirectory ? 'label' : 'event';
     const picture = anchor.querySelector<HTMLElement>('.ui-archive-picture');
     const source = canAnimatePicture(picture) ? picture : null;
     const title = anchor.querySelector<HTMLElement>(kind === 'label' ? '.ui-label-row__title' : '.ui-event-card__title');
@@ -195,7 +197,8 @@
         try { window.dispatchEvent(new Event('hashchange')); }
         finally { replayingHashChange = false; }
       };
-      const anchor = document.querySelector<HTMLAnchorElement>(`.ui-cached-view:not([inert]) a[href="${CSS.escape(href)}"]`);
+      const anchor = Array.from(document.querySelectorAll<HTMLAnchorElement>(`main a[href="${CSS.escape(href)}"]`))
+        .find(item => !item.closest('[inert]') && !!item.closest('.ui-timeline, .ui-label-list')) ?? null;
       if (returnToList(href, update) || openEvent(href, anchor, update)) heldHash = href;
     };
     const holdRouterUpdate = (event: HashChangeEvent) => {
