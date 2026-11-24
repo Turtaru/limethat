@@ -5,12 +5,14 @@
   import ArchivePicture from './ArchivePicture.svelte';
   import { eventHref, eventDates, dateLabel, description, timelineGroups } from './models';
   import { activityCounts, activityDays, activityTarget } from './activity';
-  let { events, showActivity = false }: { events: ArchiveEvent[]; showActivity?: boolean } = $props();
+  let { events, showActivity = false, picturesActive = true }: { events: ArchiveEvent[]; showActivity?: boolean; picturesActive?: boolean } = $props();
+  const instanceId = $props.id();
+  const idPrefix = $derived(showActivity ? '' : `${instanceId}-`);
   const counts = $derived(activityCounts(showActivity ? events : []));
   const groups = $derived(timelineGroups(events));
   function jumpToDay(date: string) {
     const id = activityTarget(events, date);
-    const target = id ? document.getElementById(id) : null;
+    const target = id ? document.getElementById(`${idPrefix}${id}`) : null;
     if (!target) return;
     target.focus({ preventScroll: true });
     target.scrollIntoView({ block: 'start' });
@@ -30,13 +32,13 @@
           <ActivityGrid title={year} days={activityDays(year, counts)} showCaption={false} onselect={jumpToDay} />
         </section>
       {/if}
-      <h2 class="ui-month" id={`month-${group.month}`} tabindex="-1">{group.events[0].startDate ? dateLabel(group.month) : 'Undated'}</h2>
+      <h2 class="ui-month" id={`${idPrefix}month-${group.month}`} tabindex="-1">{group.events[0].startDate ? dateLabel(group.month) : 'Undated'}</h2>
       {#if showActivity && group.month.length === 7}<ActivityGrid title={dateLabel(group.month)} days={activityDays(group.month, counts)} showCaption={false} />{/if}
       <ol class="ui-timeline">
         {#each group.events as event (event.id)}
           {@const photo = photoNames(event.body)[0]}
-          <li id={`event-${event.id}`} tabindex="-1">
-            {#snippet image()}<ArchivePicture name={photo} alt={event.title} frame={event.frames[photo]} />{/snippet}
+          <li id={`${idPrefix}event-${event.id}`} tabindex="-1">
+            {#snippet image()}<ArchivePicture name={photo} alt={event.title} frame={event.frames[photo]} active={picturesActive} />{/snippet}
             <EventCard href={eventHref(event.id)} title={event.title} date={event.startDate ?? undefined} dateLabel={eventDates(event)} description={description(event.body)} labels={event.tags.map(tag => tag.title)} picture={photo ? image : undefined} />
           </li>
         {/each}

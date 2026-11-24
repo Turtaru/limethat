@@ -6,8 +6,8 @@
   import type { PictureFrame } from '../lib/archive-format';
   import { useSession } from './session.svelte';
 
-  let { name, alt, frame, thumbnail = true, viewable = false }: {
-    name: string; alt: string; frame?: PictureFrame; thumbnail?: boolean; viewable?: boolean;
+  let { name, alt, frame, thumbnail = true, viewable = false, active = true }: {
+    name: string; alt: string; frame?: PictureFrame; thumbnail?: boolean; viewable?: boolean; active?: boolean;
   } = $props();
   const session = useSession();
   let host: HTMLDivElement;
@@ -20,23 +20,23 @@
   $effect(() => {
     const archive = session.workspace.archive;
     const source = name;
-    const load = visible;
-    let active = true;
+    const load = visible && active;
+    let current = true;
     let owned = '';
     url = ''; error = '';
     if (archive && load) {
       void session.workspace.readPicture(source, thumbnail).then(file => {
-        if (!active) return;
+        if (!current) return;
         owned = URL.createObjectURL(file); url = owned;
-      }).catch(cause => { if (active) error = cause instanceof Error ? cause.message : 'Picture unavailable.'; });
+      }).catch(cause => { if (current) error = cause instanceof Error ? cause.message : 'Picture unavailable.'; });
     }
-    return () => { active = false; if (owned) URL.revokeObjectURL(owned); };
+    return () => { current = false; if (owned) URL.revokeObjectURL(owned); };
   });
 </script>
 
 <div bind:this={host} class="ui-archive-picture" class:ui-detail-picture={viewable}>
   {#if url}
-    {#if viewable}<button class="ui-photo" type="button" aria-label={`Open picture: ${alt}`} onclick={() => { session.viewer = { name, alt, section: router.location.startsWith('/labels') ? 'labels' : 'events' }; }}><ImageFrameViewport src={url} {alt} {frame} /></button>
-    {:else}<ImageFrameViewport src={url} {alt} {frame} />{/if}
-  {:else}<p class={error ? 'ui-error' : 'ui-muted'}>{error || 'Loading picture…'}</p>{/if}
+    {#if viewable}<button class="ui-photo" type="button" aria-label={`Open picture: ${alt}`} onclick={() => { session.viewer = { name, alt, section: router.location.startsWith('/labels') ? 'labels' : 'events' }; }}><ImageFrameViewport src={url} {alt} {frame} fadeIn /></button>
+    {:else}<ImageFrameViewport src={url} {alt} {frame} fadeIn />{/if}
+  {:else if error}<p class="ui-error" role="alert">{error}</p>{/if}
 </div>

@@ -1,4 +1,9 @@
 @layer components {
+  .ui-route-views { position: relative; }
+  .ui-cached-view--inactive { content-visibility: hidden; position: absolute; inset: 0 0 auto; block-size: 0; overflow: clip; }
+  @supports not (content-visibility: hidden) {
+    .ui-cached-view--inactive { display: none; }
+  }
   .ui-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
   .ui-archive-picture { width: 100%; min-width: 0; aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--radius-photo); background: var(--bg); }
   .ui-archive-picture > p { margin: 0; padding: var(--space-3); }

@@ -4,6 +4,7 @@
   import { AppShell } from './lib/ui-kit';
   import { Session, sessionKey } from './features/session.svelte';
   import Events from './features/Events.svelte';
+  import EventList from './features/EventList.svelte';
   import { eventListNavigation, type EventListPosition } from './features/event-list-navigation.svelte';
   import Labels from './features/Labels.svelte';
   import Settings from './features/Settings.svelte';
@@ -18,6 +19,7 @@
   const session = new Session();
   setContext(sessionKey, session);
   const routes = { '/': Events, '/events': Events, '/events/new': Editors, '/events/:id/edit': Editors, '/events/:id': Events, '/labels': Labels, '/labels/new': Editors, '/labels/:id/edit': Editors, '/labels/:id': Labels, '/settings': Settings, '*': NotFound };
+  const eventListRoute = $derived(router.location === '/' || router.location === '/events');
   const editorRoute = $derived(/^\/(events|labels)\/(new|[^/]+\/edit)$/.test(router.location));
   let previousArchive: FileSystemDirectoryHandle | null = null;
   const section = $derived(router.location.startsWith('/labels') ? 'labels' : router.location === '/settings' ? 'settings' : 'events');
@@ -101,7 +103,8 @@
       return;
     }
     const saved = history.state?.limethatFocus as string | undefined;
-    const target = saved ? document.querySelector<HTMLElement>(`main a[href="${CSS.escape(saved)}"]`) : null;
+    const target = saved ? Array.from(document.querySelectorAll<HTMLElement>(`main a[href="${CSS.escape(saved)}"]`))
+      .find(link => !link.closest('[inert]')) : null;
     (target ?? document.querySelector<HTMLElement>('main'))?.focus({ preventScroll: true });
   }
 </script>
@@ -124,7 +127,12 @@
       {#if session.workspace.translationRecovery}
         <Settings />
       {:else}
-        <Router {routes} restoreScrollState onRouteLoaded={routeLoaded} />
+        <div class="ui-route-views">
+          {#key session.workspace.archive?.root}
+            <EventList active={eventListRoute} />
+          {/key}
+          <Router {routes} restoreScrollState onRouteLoaded={routeLoaded} />
+        </div>
       {/if}
     </div>
   </AppShell>

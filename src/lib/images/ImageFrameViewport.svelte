@@ -12,11 +12,12 @@
     alt: string;
     frame?: ImageFrame | null;
     editable?: boolean;
+    fadeIn?: boolean;
     onchange?: (frame: ImageFrame) => void;
     onopen?: () => void;
     onreadychange?: (ready: boolean) => void;
   }
-  let { src, alt, frame = null, editable = false, onchange, onopen, onreadychange }: Props = $props();
+  let { src, alt, frame = null, editable = false, fadeIn = false, onchange, onopen, onreadychange }: Props = $props();
   let viewport: HTMLDivElement;
   let image = $state<HTMLImageElement>();
   let width = $state(0);
@@ -226,12 +227,14 @@
     {#key src}
       <img
         bind:this={image}
+        class:fade-in={fadeIn}
         {src}
         {alt}
         draggable="false"
         onload={loaded}
         onerror={failedImage}
         style:visibility={geometry.bounds ? 'visible' : 'hidden'}
+        style:opacity={fadeIn && !geometry.bounds ? 0 : 1}
         style:width={`${dimensions?.width ?? 0}px`}
         style:height={`${dimensions?.height ?? 0}px`}
         style:transform={geometry.bounds && dimensions
@@ -251,5 +254,8 @@
   .image-clip { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; z-index: 1; }
   .overflow-preview { opacity: .35; }
   .viewport.editable { touch-action: none; cursor: grab; }
+  @media (prefers-reduced-motion: no-preference) {
+    img.fade-in { transition: opacity 180ms ease-out; }
+  }
   img { position: absolute; top: 0; left: 0; max-width: none; max-height: none; transform-origin: top left; pointer-events: none; user-select: none; transition: none; }
 </style>
