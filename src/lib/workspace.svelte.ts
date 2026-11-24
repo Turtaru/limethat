@@ -17,6 +17,7 @@ export class Workspace {
   state = $state<WorkspaceState>(this.capability.supported ? 'no-folder' : 'unsupported');
   archive = $state.raw<Archive | null>(null);
   summary = $state.raw<ArchiveSummary | null>(null);
+  translationRecovery = $state(false);
   permission = $state<PermissionState>('prompt');
   operation = $state<string | null>(null);
   error = $state.raw<ArchiveFailure | null>(null);
@@ -50,8 +51,9 @@ export class Workspace {
     this.state = 'loading';
     const candidate = new Archive(handle);
     const setup = create ? await candidate.initialize() : null;
-    let summary: ArchiveSummary;
-    try { summary = await candidate.load(); }
+    const translationRecovery = await candidate.hasTranslationRecovery();
+    let summary: ArchiveSummary | null;
+    try { summary = translationRecovery ? null : await candidate.load(); }
     catch (cause) {
       if (setup) throw new ArchiveFailure('partial-change', 'Archive creation completed, but opening it failed. Reopen this folder; do not repeat creation.', setup.affectedPaths, [], { cause });
       throw cause;
@@ -59,9 +61,11 @@ export class Workspace {
     // Commit the replacement only after its contents have loaded successfully.
     this.archive = candidate;
     this.summary = summary;
+    this.translationRecovery = translationRecovery;
     this.pending = null;
     this.permission = 'granted';
-    this.state = 'ready';
+    this.state = translationRecovery ? 'error' : 'ready';
+    if (translationRecovery) this.error = new ArchiveFailure('conflict', 'An unfinished migration needs rollback in Settings.');
     try {
       await rememberFolder(handle);
       this.persistenceWarning = null;
@@ -117,6 +121,7 @@ export class Workspace {
       await forgetFolder();
       this.archive = null;
       this.summary = null;
+      this.translationRecovery = false;
       this.pending = null;
       this.permission = 'prompt';
       this.persistenceWarning = null;
@@ -129,6 +134,11 @@ export class Workspace {
     this.start('refreshing');
     try {
       if (!this.archive) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
+      this.translationRecovery = await this.archive.hasTranslationRecovery();
+      if (this.translationRecovery) {
+        this.summary = null;
+        throw new ArchiveFailure('conflict', 'An unfinished migration needs rollback in Settings.');
+      }
       this.summary = await this.archive.refresh();
       this.state = 'ready';
       this.permission = 'granted';
@@ -136,12 +146,14 @@ export class Workspace {
     finally { this.operation = null; }
   }
 
-  private async mutate<T>(name: string, action: (archive: Archive, summary: ArchiveSummary) => Promise<MutationResult<T>>): Promise<MutationOutcome<T>> {
+  private async mutate<T>(name: string, action: (archive: Archive, summary: ArchiveSummary) => Promise<MutationResult<T>>, recovery = false): Promise<MutationOutcome<T>> {
     this.start(name);
     try {
-      if (!this.archive || !this.summary) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
+      if (!this.archive || (!this.summary && !recovery)) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
+      if (this.translationRecovery && !recovery) throw new ArchiveFailure('conflict', 'Roll back the unfinished migration in Settings before editing.');
       if (this.pending) throw new ArchiveFailure('permission-required', 'Reconnect or reopen a folder before editing.');
-      const result = await action(this.archive, this.summary);
+      const result = await action(this.archive, this.summary!);
+      this.translationRecovery = await this.archive.hasTranslationRecovery();
       try {
         this.summary = await this.archive.refresh();
         this.state = 'ready';
@@ -150,10 +162,18 @@ export class Workspace {
       } catch (error) {
         return { status: 'saved', result, refresh: 'failed', refreshError: this.failed(error) };
       }
-    } catch (error) { return { status: 'failed', error: this.failed(error) }; }
+    } catch (error) {
+      if (this.archive) {
+        try { this.translationRecovery = await this.archive.hasTranslationRecovery(); }
+        catch {}
+      }
+      return { status: 'failed', error: this.failed(error) };
+    }
     finally { this.operation = null; }
   }
 
+  rollbackRelatedEvents() { return this.mutate('rolling back migration', archive => archive.rollbackRelatedEvents(), true); }
+  translateRelatedEvents() { return this.mutate('translating related events', (archive, summary) => archive.translateRelatedEvents(summary)); }
   createEvent(draft: EventDraft) { return this.mutate('saving', archive => archive.createEvent(draft)); }
   updateEvent(original: ArchiveEvent, draft: EventDraft) { return this.mutate('saving', archive => archive.updateEvent(original, draft)); }
   deleteEvent(original: ArchiveEvent) { return this.mutate('deleting', archive => archive.deleteEvent(original)); }

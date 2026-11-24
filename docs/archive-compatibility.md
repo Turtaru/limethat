@@ -22,6 +22,30 @@ Embedded event labels are objects containing string `id` and `title`. Renaming c
 
 Local Markdown image references use `![alt](../attachments/<filename>)`. Label pictures use `attachments/<filename>`. Filenames are single safe components (`A-Za-z0-9._-`, excluding `.` and `..`); archive operations never follow arbitrary paths or fetch remote media. Other Markdown remains text. Thumbnails are optional on reads; a missing thumbnail falls back to the original. Attachments are read only on demand and limited to 25 MiB. No reference removal, event deletion or draft cancellation removes attachments.
 
+## Legacy exports and related events
+
+Opening an archive never migrates it. Displayed descriptions omit local image references and an empty `## Photos` section, while archive Markdown and editor source retain both. Sections containing other text remain visible.
+
+Settings offers an explicit one-time conversion when nonempty `related_events` metadata exists and no completion timestamp exists. Each connected component (including indirect and one-way connections) receives one new numeric tag named `Related: <earliest dated event title>`, with a suffix for name collisions. Self-links are ignored. Missing targets, invalid relationships, unreadable events, or changed source files block conversion. Existing tags and original `related_events` metadata are preserved; this app neither creates nor updates relationships.
+
+After writing and verifying tags and event references, the final write adds this app-specific metadata to `manifest.json`:
+
+```json
+"limethat_web": {
+  "migrations": {
+    "related_events_to_tags": {
+      "completed_at": "2026-11-24T14:30:00.000Z"
+    }
+  }
+}
+```
+
+Existing manifest fields, including original counts/hashes, are retained. The timestamp records completion, not a date cutoff or ongoing synchronization: later relationships added elsewhere are not translated. The Settings button disappears after completion. No per-relationship tracking or automatic migration retry is performed.
+
+Migration and recovery require exclusive archive access: keep other tools closed until either finishes. Before any original is changed, verified backups and `limethat-related-events-recovery.json` record every target and backup path. A write failure automatically restores and verifies all originals, including the manifest, then removes the recovery record. Refresh before retrying migration. Backups remain available.
+
+If rollback fails or the browser closes during migration, the recovery record remains. Opening the archive detects it before parsing potentially damaged originals, shows Settings recovery, and blocks other writes. **Roll back unfinished migration** validates all backup paths and contents before restoring any file, verifies restored bytes, and removes the record only after restoration succeeds. Recovery is repeatable if interrupted; reconnect if permission was lost. An empty record left before its first committed write can be removed safely because no original writes could have started. Recovery deliberately does not check for external edits: the exclusive-access assumption includes recovery.
+
 ## Frames and image bytes
 
 Event frames are `image_frames: {"<filename>": {...}}`; labels use `picture_frame`. Values contain finite `offsetX`, `offsetY`, `cropWidth`, `cropHeight`, `cropScale`; dimensions and scale are positive and width/height is 4:3 (Android tolerance 0.01). Shared geometry validation also rejects values that overflow Android Float or positive dimensions/scale that underflow to Float zero; it does not impose product-level zoom/pan bounds.

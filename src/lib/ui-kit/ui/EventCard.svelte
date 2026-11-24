@@ -40,8 +40,10 @@
       <div class="ui-event-card__content">
         {#if labels.length}<p class="ui-event-card__labels">{labels.join(' · ')}</p>{/if}
         <h2 class="ui-event-card__title">{title}</h2>
-        {#if description?.trim()}<p class="ui-event-card__description">{description}</p>{/if}
       </div>
     </div>
+    {#if description?.trim()}
+      <div class="ui-event-card__description"><p>{description}</p></div>
+    {/if}
   </a>
 </article>

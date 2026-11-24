@@ -77,7 +77,7 @@
 
 {#if import.meta.env.MODE === 'framing'}
   <main><h1>Limethat image framing harness</h1>{#await import('./dev/ImageFrameHarness.svelte') then { default: Harness }}<Harness />{/await}</main>
-{:else if !session.workspace.summary}
+{:else if !session.workspace.summary && !session.workspace.translationRecovery}
   <Welcome />
 {:else}
   <AppShell>
@@ -86,11 +86,15 @@
     {/snippet}
     <div class="ui-stack">
       {#if session.notice}<p class={session.workspace.state === 'ready' ? 'ui-sr-only' : 'ui-status'} role="status">{session.notice}</p>{/if}
-      {#if router.location !== '/settings' && (session.workspace.state !== 'ready' || session.reviewRequired || session.workspace.persistenceWarning)}<Connection />{/if}
+      {#if !session.workspace.translationRecovery && router.location !== '/settings' && (session.workspace.state !== 'ready' || session.reviewRequired || session.workspace.persistenceWarning)}<Connection />{/if}
       {#if session.workspace.summary}
         {#if session.workspace.summary.unreadableEvents.length}<div class="ui-error" role="alert"><p>{session.workspace.summary.unreadableEvents.length} unreadable events; they are not included below. Label rename/delete is blocked until resolved.</p><ul>{#each session.workspace.summary.unreadableEvents as item}<li><code>{item.path}</code>: {item.message}</li>{/each}</ul></div>{/if}
       {/if}
-      <Router {routes} restoreScrollState onRouteLoaded={routeLoaded} />
+      {#if session.workspace.translationRecovery}
+        <Settings />
+      {:else}
+        <Router {routes} restoreScrollState onRouteLoaded={routeLoaded} />
+      {/if}
     </div>
   </AppShell>
   <PictureViewer />

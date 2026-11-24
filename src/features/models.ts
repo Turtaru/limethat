@@ -26,7 +26,11 @@ export function timelineGroups(events: ArchiveEvent[]): { month: string; events:
   return groups;
 }
 export const matchesEvent = (event: ArchiveEvent, query: string) => `${event.title} ${event.body} ${event.tags.map(tag => tag.title).join(' ')}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
-export const description = (body: string) => body.replace(/!\[[^\]]*\]\(\.\.\/attachments\/[A-Za-z0-9._-]+\)/g, '').trim();
+export const description = (body: string) => body
+  .replace(/!\[[^\]]*\]\(\.\.\/attachments\/[A-Za-z0-9._-]+\)/g, '')
+  .replace(/^## Photos[ \t]*\r?\n(?:[ \t]*\r?\n)*(?=#{1,2} )/gm, '')
+  .replace(/(?:^|\n)## Photos\s*$/, '')
+  .trim();
 export const labelCount = (summary: ArchiveSummary, id: string) => summary.events.filter(event => event.tags.some(tag => tag.id === id)).length;
 
 /** Builds complete archive drafts while retaining unknown embedded-label properties and nonvisible frames. */

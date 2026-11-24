@@ -1,10 +1,11 @@
 import {
   PICTURE_LIMIT, TEXT_LIMIT, editEvent, labelKey, newEvent, nextLabelId, parseEvent,
-  parseLabels, parseManifest, safeName, serialize, updateMetadata, validateFrame, validateText,
+  isObject, json, parseLabels, parseManifest, safeName, serialize, updateMetadata, validateFrame, validateText,
 } from './archive-format';
 import type { ArchiveEvent, ArchiveSummary, EventDraft, Label, PictureFrame } from './archive-format';
 import { ArchiveFailure, failure, requireValue } from './errors';
 import { processPicture } from './pictures';
+import { needsRelatedEventsTranslation, relatedEventGroups } from './related-events';
 import type { PictureStage } from './pictures';
 
 export interface MutationResult<T> {
@@ -14,6 +15,8 @@ export interface MutationResult<T> {
 }
 export interface LabelDraft { title: string; picture?: string; picture_frame?: PictureFrame }
 interface TextChange { path: string; source: string | null; next: string | null }
+
+export const TRANSLATION_RECOVERY = 'limethat-related-events-recovery.json';
 
 const encoder = new TextEncoder();
 // Keep the BOM in the source snapshot so conflict checks and recovery copies preserve its bytes.
@@ -85,7 +88,52 @@ export class Archive {
     requireValue(saved.every((byte, index) => byte === expected[index]), `Write verification failed: ${path}`, 'verification-failed');
   }
 
+  async hasTranslationRecovery(): Promise<boolean> {
+    try { await this.root.getFileHandle(TRANSLATION_RECOVERY); return true; }
+    catch (error) {
+      if (error instanceof DOMException && error.name === 'NotFoundError') return false;
+      throw error;
+    }
+  }
+
+  private async restoreTranslation(): Promise<MutationResult<void>> {
+    const sourceRecord = await this.read(TRANSLATION_RECOVERY);
+    if (!sourceRecord) {
+      await this.root.removeEntry(TRANSLATION_RECOVERY);
+      await this.assertMissing(TRANSLATION_RECOVERY);
+      return { value: undefined, affectedPaths: [TRANSLATION_RECOVERY], recoveryPaths: [] };
+    }
+    const record = json(sourceRecord);
+    requireValue(isObject(record) && String(record.version) === '1' && Array.isArray(record.files) && record.files.length > 0,
+      'Invalid migration recovery record');
+    const originals = new Map<string, string>();
+    const recoveryPaths: string[] = [];
+    for (const file of record.files) {
+      requireValue(isObject(file) && typeof file.path === 'string' && typeof file.backup === 'string', 'Invalid recovery file');
+      const path = file.path;
+      requireValue(path === 'manifest.json' || path === 'tags.json' || /^moments\/[A-Za-z0-9._-]+\.md$/.test(path), 'Invalid recovery target');
+      requireValue(!originals.has(path) && file.backup.startsWith(`${path}.backup-`) &&
+        safeName(file.backup.slice(`${path}.backup-`.length)), 'Invalid recovery backup');
+      const source = await this.read(file.backup);
+      if (path === 'manifest.json') parseManifest(source);
+      else if (path === 'tags.json') parseLabels(source);
+      else parseEvent(path.slice('moments/'.length), source);
+      originals.set(path, source);
+      recoveryPaths.push(file.backup);
+    }
+    requireValue(originals.has('manifest.json') && originals.has('tags.json'), 'Incomplete migration recovery record');
+    for (const [path, source] of originals) await this.write(path, source);
+    await this.root.removeEntry(TRANSLATION_RECOVERY);
+    await this.assertMissing(TRANSLATION_RECOVERY);
+    return { value: undefined, affectedPaths: [...originals.keys(), TRANSLATION_RECOVERY], recoveryPaths };
+  }
+
+  async rollbackRelatedEvents(): Promise<MutationResult<void>> {
+    return this.exclusive(() => this.restoreTranslation());
+  }
+
   private async validateArchive(): Promise<void> {
+    requireValue(!await this.hasTranslationRecovery(), 'Roll back the unfinished migration in Settings before editing.', 'conflict');
     parseManifest(await this.read('manifest.json'));
     parseLabels(await this.read('tags.json'));
     await this.root.getDirectoryHandle('moments');
@@ -93,9 +141,11 @@ export class Archive {
   }
 
   /** Applies text changes with verified sibling backups. This detects stale sources but cannot lock out other apps. */
-  private async apply(changes: TextChange[], initializing = false): Promise<MutationResult<void>> {
+  private async apply(changes: TextChange[], initializing = false, recoverTranslation = false): Promise<MutationResult<void>> {
     const recoveryPaths: string[] = [];
     const affectedPaths: string[] = [];
+    const files: { path: string; backup: string }[] = [];
+    let recoveryRecorded = false;
     let originalsAttempted = false;
     try {
       if (!initializing) await this.validateArchive();
@@ -110,7 +160,19 @@ export class Archive {
         affectedPaths.push(backup);
         await this.write(backup, change.source);
         recoveryPaths.push(backup);
+        files.push({ path: change.path, backup });
         await this.assertSource(change.path, change.source);
+      }
+      if (recoverTranslation) {
+        const record = serialize({ version: 1, files }, 2) + '\n';
+        validateText(record);
+        await this.assertMissing(TRANSLATION_RECOVERY);
+        try { await this.write(TRANSLATION_RECOVERY, record); }
+        catch (error) {
+          await this.root.removeEntry(TRANSLATION_RECOVERY);
+          throw error;
+        }
+        recoveryRecorded = true;
       }
       for (const change of changes) {
         await this.assertSource(change.path, change.source);
@@ -124,9 +186,22 @@ export class Archive {
           await this.write(change.path, change.next);
         }
       }
+      if (recoveryRecorded) {
+        await this.root.removeEntry(TRANSLATION_RECOVERY);
+        await this.assertMissing(TRANSLATION_RECOVERY);
+      }
       return { value: undefined, affectedPaths, recoveryPaths };
     } catch (error) {
       const cause = failure(error);
+      if (recoveryRecorded) {
+        try { await this.restoreTranslation(); }
+        catch (rollbackError) {
+          throw new ArchiveFailure('partial-change', `${cause.message} Automatic rollback could not finish: ${failure(rollbackError).message}. Use Roll back unfinished migration in Settings.`,
+            affectedPaths, recoveryPaths, { cause: rollbackError });
+        }
+        throw new ArchiveFailure(cause.code === 'partial-change' ? 'io-error' : cause.code,
+          `${cause.message} Migration rolled back. Refresh the archive before retrying.`, affectedPaths, [], { cause });
+      }
       throw new ArchiveFailure(originalsAttempted ? 'partial-change' : cause.code,
         `${cause.message} ${originalsAttempted ? 'Some changes may be complete. Do not blindly retry; refresh and inspect affected files.' : 'This operation did not change original files.'}`,
         [...new Set([...affectedPaths, ...cause.affectedPaths])], recoveryPaths, { cause });
@@ -264,6 +339,47 @@ export class Archive {
       changes.push({ path: 'tags.json', source: snapshot.tagsSource, next: tagsText });
       const result = await this.apply(changes);
       return { ...result, value: replacement };
+    });
+  }
+
+  async translateRelatedEvents(snapshot: ArchiveSummary): Promise<MutationResult<void>> {
+    return this.exclusive(async () => {
+      requireValue(needsRelatedEventsTranslation(snapshot), 'No related events need translation');
+      requireValue(snapshot.unreadableEvents.length === 0, 'Resolve unreadable events before translating related events');
+      const current = await this.readArchive();
+      const originals = new Map(snapshot.events.map(event => [event.filename, event.source]));
+      requireValue(current.unreadableEvents.length === 0 && current.events.length === originals.size &&
+        current.events.every(event => originals.get(event.filename) === event.source) &&
+        current.tagsSource === snapshot.tagsSource && serialize(current.manifest) === serialize(snapshot.manifest),
+      'Archive changed outside the app. Refresh before translating related events.', 'conflict');
+      const manifestSource = await this.read('manifest.json');
+      requireValue(serialize(parseManifest(manifestSource)) === serialize(current.manifest),
+        'Manifest changed outside the app. Refresh first.', 'conflict');
+      const labels = parseLabels(current.tagsSource);
+      const changes: TextChange[] = [];
+      const completedAt = new Date().toISOString();
+      for (const group of relatedEventGroups(current.events)) {
+        const base = `Related: ${group[0].title}`;
+        let title = base;
+        let suffix = 2;
+        while (labels.some(label => label.title === title)) title = `${base} (${suffix++})`;
+        const label: Label = { id: nextLabelId(labels), title, created: completedAt, modified: completedAt };
+        labels.push(label);
+        for (const event of group) changes.push({ path: `moments/${event.filename}`, source: event.source,
+          next: updateMetadata(event, { tags: [...event.tags, { id: labelKey(label.id), title }] }) });
+      }
+      const web = current.manifest.limethat_web;
+      requireValue(web === undefined || isObject(web), 'Invalid limethat_web metadata');
+      const migrations = web?.migrations;
+      requireValue(migrations === undefined || isObject(migrations), 'Invalid limethat_web migrations metadata');
+      const manifest = { ...current.manifest, limethat_web: { ...web, migrations: { ...migrations,
+        related_events_to_tags: { completed_at: completedAt },
+      } } };
+      const tagsText = serialize(labels, 2) + '\n';
+      parseLabels(tagsText);
+      changes.unshift({ path: 'tags.json', source: current.tagsSource, next: tagsText });
+      changes.push({ path: 'manifest.json', source: manifestSource, next: serialize(manifest, 2) + '\n' });
+      return this.apply(changes, false, true);
     });
   }
 

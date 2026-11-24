@@ -32,5 +32,5 @@
       {#if workspace.error.recoveryPaths.length}<p>Verified recovery copies:</p><ul>{#each workspace.error.recoveryPaths as path}<li><code>{path}</code></li>{/each}</ul>{/if}
     </div>
   {/if}
-  {#if session.reviewRequired}<p class="ui-error">Changes may be partially complete. Inspect the files and backups, then refresh. Do not repeat this save blindly. Close the affected editor and reopen the current record after review.</p>{/if}
+  {#if session.reviewRequired && !workspace.translationRecovery}<p class="ui-error">Changes may be partially complete. Inspect the files and backups, then refresh. Do not repeat this save blindly. Close the affected editor and reopen the current record after review.</p>{/if}
 </div>
