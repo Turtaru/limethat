@@ -17,6 +17,7 @@
   type Props = {
     href: string;
     title: string;
+    titleTransitionName?: string;
     date?: string;
     image?: string;
     picture?: Snippet;
@@ -27,7 +28,7 @@
     onclick?: HTMLAnchorAttributes['onclick'];
   };
 
-  let { href, title, date, image, picture, dateLabel, description, labels = [], locale = 'en', onclick }: Props = $props();
+  let { href, title, titleTransitionName, date, image, picture, dateLabel, description, labels = [], locale = 'en', onclick }: Props = $props();
   const parsed = $derived(date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T12:00:00`) : null);
   const day = $derived(parsed && !Number.isNaN(parsed.getTime()) ? parsed : null);
   const formatter = $derived(dateFormatters(locale));
@@ -52,7 +53,7 @@
       {/if}
       <div class="ui-event-card__content">
         {#if labels.length}<p class="ui-event-card__labels">{labels.join(' · ')}</p>{/if}
-        <h2 class="ui-event-card__title">{title}</h2>
+        <h2 class="ui-event-card__title" style:view-transition-name={titleTransitionName ?? 'none'}>{title}</h2>
       </div>
     </div>
     {#if description?.trim()}

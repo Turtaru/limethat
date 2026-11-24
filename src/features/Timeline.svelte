@@ -38,10 +38,10 @@
       <ol class="ui-timeline">
         {#each group.events as event (event.id)}
           {@const photo = photoNames(event.body)[0]}
-          {@const transitioning = showActivity && picturesActive && eventPhotoTransition.returning && eventPhotoTransition.eventId === event.id}
+          {@const transitioning = showActivity && picturesActive && !!eventPhotoTransition.file && eventPhotoTransition.returning && eventPhotoTransition.eventId === event.id}
           <li id={`${idPrefix}event-${event.id}`} tabindex="-1">
             {#snippet image()}<ArchivePicture name={photo} alt={event.title} frame={event.frames[photo]} active={picturesActive} transitionName={transitioning ? 'event-photo' : undefined} onready={transitioning ? eventPhotoTransition.ready ?? undefined : undefined} />{/snippet}
-            <EventCard href={eventHref(event.id)} title={event.title} date={event.startDate ?? undefined} dateLabel={eventDates(event)} description={description(event.body)} labels={event.tags.map(tag => tag.title)} picture={photo ? image : undefined} />
+            <EventCard href={eventHref(event.id)} title={event.title} titleTransitionName={showActivity && picturesActive && eventPhotoTransition.eventId === event.id ? 'event-title' : undefined} date={event.startDate ?? undefined} dateLabel={eventDates(event)} description={description(event.body)} labels={event.tags.map(tag => tag.title)} picture={photo ? image : undefined} />
           </li>
         {/each}
       </ol>

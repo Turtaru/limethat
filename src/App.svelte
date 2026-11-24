@@ -27,81 +27,102 @@
   const recordId = $derived(router.params && !Array.isArray(router.params) ? router.params.id : undefined);
   const currentEvent = $derived(session.workspace.summary?.events.find(event => event.id.toLowerCase() === recordId?.toLowerCase()));
   const currentLabel = $derived(session.workspace.summary?.labels.find(label => labelKey(label.id) === recordId));
-  let photoTransition: ViewTransition | null = null;
-  let returnRouteReady: (() => void) | null = null;
-  function canAnimatePicture(source: HTMLElement | null): source is HTMLElement {
-    const image = source?.querySelector('img');
-    if (!document.startViewTransition || photoTransition || matchMedia('(prefers-reduced-motion: reduce)').matches
-      || !source || !loadedThumbnails.has(source) || !image?.complete || !image.naturalWidth
-      || getComputedStyle(image).visibility !== 'visible' || image.getAnimations().some(animation => animation.playState === 'running')) return false;
-    const bounds = source.getBoundingClientRect();
+  let activeEventTransition: ViewTransition | null = null;
+  let transitionRouteReady: (() => void) | null = null;
+  function canAnimateElement(element: HTMLElement | null): element is HTMLElement {
+    if (!document.startViewTransition || activeEventTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || !element) return false;
+    const bounds = element.getBoundingClientRect();
     return bounds.bottom > 0 && bounds.top < window.innerHeight;
   }
-  function animateEvent(source: HTMLElement, title: HTMLElement | null, eventId: string, update: () => void | Promise<unknown>, returning = false) {
-    const ready = new Promise<boolean>(resolve => { eventPhotoTransition.ready = () => resolve(true); });
-    const routeReady = returning ? new Promise<void>(resolve => { returnRouteReady = resolve; }) : Promise.resolve();
-    let destinationTitle: HTMLElement | null = null;
+  function canAnimatePicture(source: HTMLElement | null): source is HTMLElement {
+    const image = source?.querySelector('img');
+    return canAnimateElement(source) && loadedThumbnails.has(source) && !!image?.complete && !!image.naturalWidth
+      && getComputedStyle(image).visibility === 'visible' && !image.getAnimations().some(animation => animation.playState === 'running');
+  }
+  function restoreListPosition(position: EventListPosition): HTMLElement | null {
+    const item = position.eventId ? document.getElementById(position.eventId) : null;
+    const bounds = item?.getBoundingClientRect();
+    const top = bounds && position.offset !== undefined ? window.scrollY + bounds.top - position.offset : position.y;
+    if (window.scrollY !== top || window.scrollX !== 0) window.scrollTo({ left: 0, top, behavior: 'instant' });
+    return item;
+  }
+  function animateEvent(source: HTMLElement | null, eventId: string, update: () => void | Promise<unknown>, returning = false) {
+    const pictureReady = source ? new Promise<boolean>(resolve => { eventPhotoTransition.ready = () => resolve(true); }) : Promise.resolve(true);
+    const routeReady = new Promise<void>(resolve => { transitionRouteReady = resolve; });
     flushSync(() => {
-      eventPhotoTransition.file = loadedThumbnails.get(source)!;
-      eventPhotoTransition.name = source.dataset.pictureName ?? null;
+      eventPhotoTransition.file = source ? loadedThumbnails.get(source) ?? null : null;
+      eventPhotoTransition.name = source?.dataset.pictureName ?? null;
       eventPhotoTransition.returning = returning;
       eventPhotoTransition.eventId = eventId;
     });
-    source.style.viewTransitionName = 'event-photo';
-    if (title) title.style.viewTransitionName = 'event-title';
+    if (source) source.style.viewTransitionName = 'event-photo';
     document.documentElement.classList.add('ui-photo-transition');
     const transition = document.startViewTransition(async () => {
-      source.style.viewTransitionName = 'none';
-      if (title) title.style.viewTransitionName = 'none';
+      if (source) source.style.viewTransitionName = 'none';
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         await update();
-        const loaded = await Promise.race([Promise.all([ready, routeReady]).then(() => true), new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), 80); })]);
+        const loaded = await Promise.race([
+          Promise.all([pictureReady, routeReady]).then(() => true),
+          new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), 80); }),
+        ]);
         if (!loaded) transition.skipTransition();
         if (returning && loaded) {
+          const position = history.state?.limethatEventList as EventListPosition | undefined;
+          if (position?.url === (window.location.hash || '#/')) restoreListPosition(position);
           const item = document.getElementById(`event-${eventId}`);
-          destinationTitle = item?.querySelector<HTMLElement>('.ui-event-card__title') ?? null;
-          const bounds = item?.querySelector('.ui-archive-picture')?.getBoundingClientRect();
-          if (!item || item.closest('[inert]') || !bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) transition.skipTransition();
-          else if (destinationTitle) destinationTitle.style.viewTransitionName = 'event-title';
+          const destinationTitle = item?.querySelector<HTMLElement>('.ui-event-card__title');
+          const bounds = (source ? item?.querySelector('.ui-archive-picture') : destinationTitle)?.getBoundingClientRect();
+          if (!item || item.closest('[inert]') || !bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) {
+            transition.skipTransition();
+          }
         }
         await tick();
       } finally { clearTimeout(timer); }
     });
-    photoTransition = transition;
+    activeEventTransition = transition;
     const cleanup = () => {
-      source.style.viewTransitionName = 'none';
-      if (title) title.style.viewTransitionName = 'none';
-      if (destinationTitle) destinationTitle.style.viewTransitionName = 'none';
+      if (source) source.style.viewTransitionName = 'none';
       eventPhotoTransition.eventId = null;
       eventPhotoTransition.ready = null;
       eventPhotoTransition.file = null;
       eventPhotoTransition.name = null;
       eventPhotoTransition.returning = false;
-      returnRouteReady = null;
+      transitionRouteReady = null;
       document.documentElement.classList.remove('ui-photo-transition');
-      photoTransition = null;
+      activeEventTransition = null;
     };
-    void transition.ready.catch(() => {});
+    void transition.ready.catch(error => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) console.warn('Event transition failed.', error);
+    });
     void transition.finished.then(cleanup, cleanup);
   }
   function returnToList(href: string, update: () => void | Promise<unknown>): boolean {
     const position = pendingListPosition ?? history.state?.limethatEventList ?? eventListNavigation.position;
-    const source = document.querySelector<HTMLElement>('main .ui-detail-media .ui-archive-picture');
+    const picture = document.querySelector<HTMLElement>('main .ui-detail-media .ui-archive-picture');
+    const source = canAnimatePicture(picture) ? picture : null;
+    const title = document.querySelector<HTMLElement>('main h1.ui-detail-title');
     if (!/^#\/(?:events)?(?:\?|$)/.test(href) || !currentEvent || editorRoute
       || !router.location.startsWith('/events/') || !position || position.url !== href
-      || !document.getElementById(`event-${currentEvent.id}`) || !canAnimatePicture(source)) return false;
+      || !document.getElementById(`event-${currentEvent.id}`) || (!source && !canAnimateElement(title))) return false;
     pendingListPosition = position;
-    animateEvent(source, document.querySelector<HTMLElement>('main h1.ui-detail-title'), currentEvent.id, update, true);
+    animateEvent(source, currentEvent.id, update, true);
+    return true;
+  }
+  function openEvent(href: string, anchor: HTMLAnchorElement | null, update: () => void | Promise<unknown>): boolean {
+    if (!eventListRoute || !anchor) return false;
+    const picture = anchor.querySelector<HTMLElement>('.ui-archive-picture');
+    const source = canAnimatePicture(picture) ? picture : null;
+    const title = anchor.querySelector<HTMLElement>('.ui-event-card__title');
+    const event = session.workspace.summary?.events.find(item => `#/events/${encodeURIComponent(item.id)}` === href);
+    if (!event || (!source && !canAnimateElement(title))) return false;
+    animateEvent(source, event.id, update);
     return true;
   }
   function followLink(href: string, anchor: HTMLAnchorElement) {
-    if (photoTransition) { photoTransition.skipTransition(); void push(href); return; }
+    if (activeEventTransition) { activeEventTransition.skipTransition(); void push(href); return; }
     if (anchor.hasAttribute('data-restore-event-list') && returnToList(href, () => push(href))) return;
-    const source = eventListRoute ? anchor.querySelector<HTMLElement>('.ui-archive-picture') : null;
-    const event = source ? session.workspace.summary?.events.find(item => `#/events/${encodeURIComponent(item.id)}` === href) : null;
-    if (event && canAnimatePicture(source)) animateEvent(source, anchor.querySelector<HTMLElement>('.ui-event-card__title'), event.id, () => push(href));
-    else void push(href);
+    if (!openEvent(href, anchor, () => push(href))) void push(href);
   }
   function dockAction() {
     if (section === 'settings') void session.refresh();
@@ -143,14 +164,16 @@
     let replayingHashChange = false;
     let heldHash: string | null = null;
     const historyNavigation = () => {
-      if (photoTransition) return;
+      if (activeEventTransition) return;
       const href = window.location.hash || '#/';
-      if (returnToList(href, () => {
-        if ((window.location.hash || '#/') !== href) { heldHash = null; photoTransition?.skipTransition(); return; }
+      const update = () => {
+        if ((window.location.hash || '#/') !== href) { heldHash = null; activeEventTransition?.skipTransition(); return; }
         replayingHashChange = true;
         try { window.dispatchEvent(new Event('hashchange')); }
         finally { replayingHashChange = false; }
-      })) heldHash = href;
+      };
+      const anchor = document.querySelector<HTMLAnchorElement>(`.ui-cached-view:not([inert]) a[href="${CSS.escape(href)}"]`);
+      if (returnToList(href, update) || openEvent(href, anchor, update)) heldHash = href;
     };
     const holdRouterUpdate = (event: HashChangeEvent) => {
       if (replayingHashChange || heldHash !== (window.location.hash || '#/')) return;
@@ -161,7 +184,7 @@
     window.addEventListener('hashchange', holdRouterUpdate, true);
     window.addEventListener('beforeunload', unload);
     document.addEventListener('click', navigate);
-    return () => { stopInstallation(); window.removeEventListener('online', online); window.removeEventListener('offline', online); window.removeEventListener('popstate', historyNavigation, true); window.removeEventListener('hashchange', holdRouterUpdate, true); window.removeEventListener('beforeunload', unload); document.removeEventListener('click', navigate); photoTransition?.skipTransition(); };
+    return () => { stopInstallation(); window.removeEventListener('online', online); window.removeEventListener('offline', online); window.removeEventListener('popstate', historyNavigation, true); window.removeEventListener('hashchange', holdRouterUpdate, true); window.removeEventListener('beforeunload', unload); document.removeEventListener('click', navigate); activeEventTransition?.skipTransition(); };
   });
   $effect(() => {
     document.documentElement.dataset.theme = session.theme;
@@ -189,23 +212,21 @@
     pendingListPosition = null;
     if (position && position.url === location && (router.location === '/events' || router.location === '/')) {
       // View transitions pause painting, so waiting for an animation frame here can stall the return snapshot.
-      if (!returnRouteReady) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      if (!transitionRouteReady) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       if ((window.location.hash || '#/') !== location) return;
-      const item = position.eventId ? document.getElementById(position.eventId) : null;
-      window.scrollTo(0, item && position.offset !== undefined
-        ? window.scrollY + item.getBoundingClientRect().top - position.offset : position.y);
+      const item = restoreListPosition(position);
       history.replaceState({ ...history.state, limethatEventList: { ...position } }, '');
       const href = position.focusHref;
       const link = href ? document.querySelector<HTMLElement>(`main a[href="${CSS.escape(href)}"]`) : null;
       (link ?? item?.querySelector<HTMLElement>('a'))?.focus({ preventScroll: true });
-      returnRouteReady?.();
+      transitionRouteReady?.();
       return;
     }
     const saved = history.state?.limethatFocus as string | undefined;
     const target = saved ? Array.from(document.querySelectorAll<HTMLElement>(`main a[href="${CSS.escape(saved)}"]`))
       .find(link => !link.closest('[inert]')) : null;
     (target ?? document.querySelector<HTMLElement>('main h1.ui-detail-title[tabindex]') ?? document.querySelector<HTMLElement>('main'))?.focus({ preventScroll: true });
-    returnRouteReady?.();
+    transitionRouteReady?.();
   }
 </script>
 
