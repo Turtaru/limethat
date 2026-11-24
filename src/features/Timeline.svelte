@@ -21,8 +21,12 @@
     {@const year = group.events[0].startDate?.slice(0, 4)}
     <section class="ui-stack">
       {#if showActivity && year && (index === 0 || year !== groups[index - 1].events[0].startDate?.slice(0, 4))}
+        {@const eventCount = events.filter(event => event.startDate?.slice(0, 4) === year).length}
         <section class="ui-year-activity" aria-label={`${year} activity`}>
-          <h2 class="ui-year-activity__title">{year}</h2>
+          <div class="ui-cluster">
+            <h2 class="ui-year-activity__title">{year}</h2>
+            <span class="ui-summary">{eventCount} {eventCount === 1 ? 'event' : 'events'}</span>
+          </div>
           <ActivityGrid title={year} days={activityDays(year, counts)} showCaption={false} onselect={jumpToDay} />
         </section>
       {/if}
