@@ -1,6 +1,6 @@
 <script lang="ts">
   import { flushSync, onMount, setContext, tick } from 'svelte';
-  import Router, { router, push } from 'svelte-spa-router';
+  import Router, { router, push, replace } from 'svelte-spa-router';
   import { AppShell } from './lib/ui-kit';
   import { Session, sessionKey } from './features/session.svelte';
   import Events from './features/Events.svelte';
@@ -131,6 +131,13 @@
     return true;
   }
   function followLink(href: string, anchor: HTMLAnchorElement) {
+    // Replace the viewer layer when navigating away so its dismissal cannot race a separate history.back().
+    if (history.state?.limethatPictureViewer) {
+      history.replaceState({ ...history.state, limethatPictureViewer: undefined }, '');
+      session.viewer = null;
+      void replace(href);
+      return;
+    }
     if (activeEventTransition) { activeEventTransition.skipTransition(); void push(href); return; }
     if ((anchor.hasAttribute('data-restore-event-list') || anchor.hasAttribute('data-restore-label-list')) && returnToList(href, () => push(href))) return;
     if (!openEvent(href, anchor, () => push(href))) void push(href);
