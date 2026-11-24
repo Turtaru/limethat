@@ -5,7 +5,9 @@
   import { Session, sessionKey } from './features/session.svelte';
   import Events from './features/Events.svelte';
   import EventList from './features/EventList.svelte';
-  import { eventListNavigation, type EventListPosition } from './features/event-list-navigation.svelte';
+  import LabelList from './features/LabelList.svelte';
+  import { labelHref } from './features/models';
+  import { eventListNavigation, labelListNavigation, type EventListPosition } from './features/event-list-navigation.svelte';
   import { eventPhotoTransition, loadedThumbnails } from './features/event-photo-transition.svelte';
   import Labels from './features/Labels.svelte';
   import Settings from './features/Settings.svelte';
@@ -46,7 +48,7 @@
     if (window.scrollY !== top || window.scrollX !== 0) window.scrollTo({ left: 0, top, behavior: 'instant' });
     return item;
   }
-  function animateEvent(source: HTMLElement | null, eventId: string, update: () => void | Promise<unknown>, returning = false) {
+  function animateEvent(source: HTMLElement | null, eventId: string, update: () => void | Promise<unknown>, returning = false, kind: 'event' | 'label' = 'event') {
     const pictureReady = source ? new Promise<boolean>(resolve => { eventPhotoTransition.ready = () => resolve(true); }) : Promise.resolve(true);
     const routeReady = new Promise<void>(resolve => { transitionRouteReady = resolve; });
     flushSync(() => {
@@ -54,6 +56,7 @@
       eventPhotoTransition.name = source?.dataset.pictureName ?? null;
       eventPhotoTransition.returning = returning;
       eventPhotoTransition.eventId = eventId;
+      eventPhotoTransition.kind = kind;
     });
     if (source) source.style.viewTransitionName = 'event-photo';
     document.documentElement.classList.add('ui-photo-transition');
@@ -68,10 +71,10 @@
         ]);
         if (!loaded) transition.skipTransition();
         if (returning && loaded) {
-          const position = history.state?.limethatEventList as EventListPosition | undefined;
+          const position = history.state?.[kind === 'label' ? 'limethatLabelList' : 'limethatEventList'] as EventListPosition | undefined;
           if (position?.url === (window.location.hash || '#/')) restoreListPosition(position);
-          const item = document.getElementById(`event-${eventId}`);
-          const destinationTitle = item?.querySelector<HTMLElement>('.ui-event-card__title');
+          const item = document.getElementById(`${kind}-${eventId}`);
+          const destinationTitle = item?.querySelector<HTMLElement>(kind === 'label' ? '.ui-label-row__title' : '.ui-event-card__title');
           const bounds = (source ? item?.querySelector('.ui-archive-picture') : destinationTitle)?.getBoundingClientRect();
           if (!item || item.closest('[inert]') || !bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) {
             transition.skipTransition();
@@ -98,30 +101,36 @@
     void transition.finished.then(cleanup, cleanup);
   }
   function returnToList(href: string, update: () => void | Promise<unknown>): boolean {
-    const position = pendingListPosition ?? history.state?.limethatEventList ?? eventListNavigation.position;
+    const kind = router.location.startsWith('/labels/') ? 'label' : 'event';
+    const position = pendingListPosition ?? history.state?.[kind === 'label' ? 'limethatLabelList' : 'limethatEventList']
+      ?? (kind === 'label' ? labelListNavigation.position : eventListNavigation.position);
+    const id = kind === 'label' ? currentLabel && labelKey(currentLabel.id) : currentEvent?.id;
     const picture = document.querySelector<HTMLElement>('main .ui-detail-media .ui-archive-picture');
     const source = canAnimatePicture(picture) ? picture : null;
     const title = document.querySelector<HTMLElement>('main h1.ui-detail-title');
-    if (!/^#\/(?:events)?(?:\?|$)/.test(href) || !currentEvent || editorRoute
-      || !router.location.startsWith('/events/') || !position || position.url !== href
-      || !document.getElementById(`event-${currentEvent.id}`) || (!source && !canAnimateElement(title))) return false;
+    const listHref = kind === 'label' ? /^#\/labels(?:\?|$)/ : /^#\/(?:events)?(?:\?|$)/;
+    if (!listHref.test(href) || !id || editorRoute || !position || position.url !== href
+      || !document.getElementById(`${kind}-${id}`) || (!source && !canAnimateElement(title))) return false;
     pendingListPosition = position;
-    animateEvent(source, currentEvent.id, update, true);
+    animateEvent(source, id, update, true, kind);
     return true;
   }
   function openEvent(href: string, anchor: HTMLAnchorElement | null, update: () => void | Promise<unknown>): boolean {
-    if (!eventListRoute || !anchor) return false;
+    const kind = router.location === '/labels' ? 'label' : 'event';
+    if ((!eventListRoute && router.location !== '/labels') || !anchor) return false;
     const picture = anchor.querySelector<HTMLElement>('.ui-archive-picture');
     const source = canAnimatePicture(picture) ? picture : null;
-    const title = anchor.querySelector<HTMLElement>('.ui-event-card__title');
-    const event = session.workspace.summary?.events.find(item => `#/events/${encodeURIComponent(item.id)}` === href);
-    if (!event || (!source && !canAnimateElement(title))) return false;
-    animateEvent(source, event.id, update);
+    const title = anchor.querySelector<HTMLElement>(kind === 'label' ? '.ui-label-row__title' : '.ui-event-card__title');
+    const id = kind === 'label'
+      ? session.workspace.summary?.labels.find(item => labelHref(labelKey(item.id)) === href)?.id
+      : session.workspace.summary?.events.find(item => `#/events/${encodeURIComponent(item.id)}` === href)?.id;
+    if (id === undefined || (!source && !canAnimateElement(title))) return false;
+    animateEvent(source, kind === 'label' ? labelKey(id) : String(id), update, false, kind);
     return true;
   }
   function followLink(href: string, anchor: HTMLAnchorElement) {
     if (activeEventTransition) { activeEventTransition.skipTransition(); void push(href); return; }
-    if (anchor.hasAttribute('data-restore-event-list') && returnToList(href, () => push(href))) return;
+    if ((anchor.hasAttribute('data-restore-event-list') || anchor.hasAttribute('data-restore-label-list')) && returnToList(href, () => push(href))) return;
     if (!openEvent(href, anchor, () => push(href))) void push(href);
   }
   function dockAction() {
@@ -146,17 +155,21 @@
       const href = anchor?.getAttribute('href');
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !href?.startsWith('#/') || !anchor || anchor.hasAttribute('download') || (anchor.target && anchor.target !== '_self')) return;
       event.preventDefault();
-      if (router.location === '/events' || router.location === '/') {
-        const items = document.querySelectorAll<HTMLElement>('.ui-timeline > li');
-        const visible = anchor.closest<HTMLElement>('.ui-timeline > li')
+      if (eventListRoute || router.location === '/labels') {
+        const labels = router.location === '/labels';
+        const selector = labels ? '.ui-label-list > li' : '.ui-timeline > li';
+        const items = document.querySelectorAll<HTMLElement>(selector);
+        const visible = anchor.closest<HTMLElement>(selector)
           ?? Array.from(items).find(item => item.getBoundingClientRect().bottom > 160);
-        eventListNavigation.position = {
+        const navigation = labels ? labelListNavigation : eventListNavigation;
+        navigation.position = {
           url: window.location.hash || '#/', y: window.scrollY,
           eventId: visible?.id, offset: visible?.getBoundingClientRect().top, focusHref: href,
         };
-        history.replaceState({ ...history.state, limethatEventList: { ...eventListNavigation.position } }, '');
+        history.replaceState({ ...history.state, [labels ? 'limethatLabelList' : 'limethatEventList']: { ...navigation.position } }, '');
       }
       if (anchor.hasAttribute('data-restore-event-list')) pendingListPosition = eventListNavigation.position;
+      if (anchor.hasAttribute('data-restore-label-list')) pendingListPosition = labelListNavigation.position;
       history.replaceState({ ...history.state, limethatFocus: href }, '');
       followLink(href, anchor);
     };
@@ -196,8 +209,9 @@
     if (archive.root !== previousArchive) {
       previousArchive = archive.root;
       eventListNavigation.position = null;
+      labelListNavigation.position = null;
       pendingListPosition = null;
-      history.replaceState({ ...history.state, limethatEventList: undefined }, '');
+      history.replaceState({ ...history.state, limethatEventList: undefined, limethatLabelList: undefined }, '');
       session.reviewRequired = false;
       session.notice = `Opened ${archive.root.name}.`;
     }
@@ -208,14 +222,15 @@
     if (!routeLoadedOnce) { routeLoadedOnce = true; return; }
     await tick();
     const location = window.location.hash || '#/';
-    const position = pendingListPosition ?? history.state?.limethatEventList as EventListPosition | undefined;
+    const stateKey = router.location === '/labels' ? 'limethatLabelList' : 'limethatEventList';
+    const position = pendingListPosition ?? history.state?.[stateKey] as EventListPosition | undefined;
     pendingListPosition = null;
-    if (position && position.url === location && (router.location === '/events' || router.location === '/')) {
+    if (position && position.url === location && (eventListRoute || router.location === '/labels')) {
       // View transitions pause painting, so waiting for an animation frame here can stall the return snapshot.
       if (!transitionRouteReady) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       if ((window.location.hash || '#/') !== location) return;
       const item = restoreListPosition(position);
-      history.replaceState({ ...history.state, limethatEventList: { ...position } }, '');
+      history.replaceState({ ...history.state, [stateKey]: { ...position } }, '');
       const href = position.focusHref;
       const link = href ? document.querySelector<HTMLElement>(`main a[href="${CSS.escape(href)}"]`) : null;
       (link ?? item?.querySelector<HTMLElement>('a'))?.focus({ preventScroll: true });
@@ -251,6 +266,7 @@
         <div class="ui-route-views">
           {#key session.workspace.archive?.root}
             <EventList active={eventListRoute} />
+            <LabelList active={router.location === '/labels'} />
           {/key}
           <Router {routes} restoreScrollState onRouteLoaded={routeLoaded} />
         </div>

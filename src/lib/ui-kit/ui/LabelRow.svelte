@@ -2,12 +2,13 @@
   import type { HTMLAnchorAttributes } from 'svelte/elements';
   import type { Snippet } from 'svelte';
 
-  let { href, name, count, image, picture, onclick }: {
+  let { href, name, count, image, picture, titleTransitionName, onclick }: {
     href: string;
     name: string;
     count: number;
     image?: string;
     picture?: Snippet;
+    titleTransitionName?: string;
     onclick?: HTMLAnchorAttributes['onclick'];
   } = $props();
 </script>
@@ -17,7 +18,7 @@
     {#if picture}{@render picture()}{:else if image}<img src={image} alt="" loading="lazy">{:else}#{/if}
   </span>
   <span class="ui-label-row__info">
-    <span class="ui-label-row__title">{name}</span>
+    <span class="ui-label-row__title" style:view-transition-name={titleTransitionName ?? 'none'}>{name}</span>
     <span class="ui-label-row__count">{count} {count === 1 ? 'event' : 'events'}</span>
   </span>
 </a>

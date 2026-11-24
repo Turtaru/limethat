@@ -8,7 +8,7 @@
   .ui-photo-transition::view-transition-new(event-photo) { height: 100%; animation-duration: 300ms; animation-timing-function: ease-in-out; }
   .ui-photo-transition::view-transition-old(event-title),
   .ui-photo-transition::view-transition-new(event-title) { animation-duration: 300ms; animation-timing-function: ease-in-out; object-fit: contain; object-position: left top; }
-  .ui-event-card__title, .ui-detail-title { width: fit-content; max-width: 100%; }
+  .ui-event-card__title, .ui-label-row__title, .ui-detail-title { width: fit-content; max-width: 100%; }
   @media (prefers-reduced-motion: reduce) {
     .ui-photo-transition::view-transition-group(*),
     .ui-photo-transition::view-transition-old(*),

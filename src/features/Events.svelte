@@ -35,7 +35,7 @@
       <div class="ui-detail-layout">
         <div class="ui-stack ui-detail-media">
           {#each photoNames(event.body) as name, index (name)}
-            {@const transitioning = index === 0 && !!eventPhotoTransition.file && !eventPhotoTransition.returning && eventPhotoTransition.eventId === event.id}
+            {@const transitioning = index === 0 && eventPhotoTransition.kind === 'event' && !!eventPhotoTransition.file && !eventPhotoTransition.returning && eventPhotoTransition.eventId === event.id}
             <ArchivePicture {name} alt={event.title} frame={event.frames[name]} viewable transitionName={transitioning ? 'event-photo' : undefined} onready={transitioning ? eventPhotoTransition.ready ?? undefined : undefined} />
           {/each}
           <section class="ui-detail-field" aria-label="Labels">
@@ -45,7 +45,7 @@
         </div>
         <div class="ui-stack ui-detail-content">
           <div class="ui-detail-field"><p class="ui-section-label">Date</p><p class="ui-description">{eventDates(event)}</p></div>
-          <header class="ui-detail-field"><p class="ui-section-label">Title</p><h1 class="ui-detail-title" tabindex="-1" style:view-transition-name={eventPhotoTransition.eventId === event.id ? 'event-title' : 'none'}>{event.title}</h1></header>
+          <header class="ui-detail-field"><p class="ui-section-label">Title</p><h1 class="ui-detail-title" tabindex="-1" style:view-transition-name={eventPhotoTransition.kind === 'event' && eventPhotoTransition.eventId === event.id ? 'event-title' : 'none'}>{event.title}</h1></header>
           <section class="ui-detail-field" aria-label="Description"><h2 class="ui-section-label">Description</h2><Markdown source={description(event.body) || 'No description added.'} /></section>
         </div>
       </div>
