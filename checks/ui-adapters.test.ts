@@ -3,7 +3,26 @@ import { test } from 'node:test';
 import { newEvent, parseLabels, photoNames } from '../src/lib/archive-format';
 import type { ArchiveSummary } from '../src/lib/archive-format';
 import type { EventDraft } from '../src/lib/ui-kit/types';
-import { description, editorInitial, eventDates, eventDraft, labelHref, matchesEvent } from '../src/features/models';
+import { description, editorInitial, eventDates, eventDraft, labelHref, matchesEvent, timelineGroups } from '../src/features/models';
+
+test('timeline groups preserve event order, partial dates and undated entries without changing the source', () => {
+  const dates = ['2026-10-30', '2026-10-12', '2026-09-11', '2025', '2024-02', null, null];
+  const events = dates.map(startDate => ({ ...newEvent(), startDate }));
+  const groups = timelineGroups(events);
+  assert.deepEqual(groups.map(group => group.month), ['2026-10', '2026-09', '2025', '2024-02', 'Undated']);
+  assert.deepEqual(groups.map(group => group.events.length), [2, 1, 1, 1, 2]);
+  assert.deepEqual(groups.flatMap(group => group.events), events);
+  assert.equal(groups[0].events[0], events[0]);
+  assert.deepEqual(events.map(event => event.startDate), dates);
+  assert.deepEqual(timelineGroups([]), []);
+});
+
+test('timeline grouping does not reorder noncontiguous dates', () => {
+  const events = ['2026-10-30', '2026-09-11', '2026-10-12'].map(startDate => ({ ...newEvent(), startDate }));
+  const groups = timelineGroups(events);
+  assert.deepEqual(groups.map(group => group.month), ['2026-10', '2026-09', '2026-10']);
+  assert.deepEqual(groups.flatMap(group => group.events), events);
+});
 
 function fixture() {
   const original = newEvent();

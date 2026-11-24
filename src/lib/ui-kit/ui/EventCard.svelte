@@ -23,7 +23,11 @@
 
 <article class="ui-event-card">
   <a class="ui-event-card__link" {href} {onclick} aria-label={`${title}, ${dateLabel ?? fullDate}`}>
-    {#if picture}{@render picture()}{:else if image}<img class="ui-event-card__image" src={image} alt="" loading="lazy">{/if}
+    {#if picture || image}
+      <div class="ui-event-card__media">
+        {#if picture}{@render picture()}{:else if image}<img class="ui-event-card__image" src={image} alt="" loading="lazy">{/if}
+      </div>
+    {/if}
     <div class="ui-event-card__caption">
       {#if day}
         <time class="ui-event-card__date" datetime={date}>
@@ -36,7 +40,7 @@
       <div class="ui-event-card__content">
         {#if labels.length}<p class="ui-event-card__labels">{labels.join(' · ')}</p>{/if}
         <h2 class="ui-event-card__title">{title}</h2>
-        {#if !image && !picture && description}<p class="ui-event-card__description">{description}</p>{/if}
+        {#if description?.trim()}<p class="ui-event-card__description">{description}</p>{/if}
       </div>
     </div>
   </a>

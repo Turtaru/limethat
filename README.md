@@ -52,5 +52,3 @@ The code is the reference for implementation details. These notes cover constrai
 
 - [Archive compatibility and recovery](docs/archive-compatibility.md): Android format, metadata preservation, conflict detection, and non-atomic writes.
 - [Image framing](docs/image-framing.md): Android-compatible coordinates and non-destructive picture positioning.
-- [Application integration](docs/ui-integration.md): draft ownership, navigation, and safe offline updates.
-- [Manual verification](docs/manual-verification.md): browser and device behavior still to verify.

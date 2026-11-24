@@ -14,8 +14,8 @@
 .ui-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .ui-toolbar--sticky { position: sticky; top: 0; z-index: 1; padding-block: var(--space-3); background: var(--bg); }
 .ui-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-3); }
-.ui-timeline { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-5); }
-.ui-timeline > li { display: grid; gap: var(--space-4); }
+.ui-timeline { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); align-items: stretch; gap: var(--space-5); }
+.ui-timeline > li { display: grid; min-width: 0; gap: var(--space-4); }
 .ui-month { margin: 0; padding-top: var(--space-3); color: var(--muted); font-size: .9375rem; font-weight: 500; scroll-margin-top: 6rem; }
 .ui-summary { display: flex; align-items: center; gap: var(--space-3); color: var(--muted); font-size: .8125rem; }
 .ui-summary::after { content: ''; height: 1px; flex: 1; background: var(--line); }

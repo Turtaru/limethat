@@ -15,6 +15,16 @@ export function dateLabel(date: string | null): string {
 }
 export const eventDates = (event: ArchiveEvent) => event.endDate ? `${dateLabel(event.startDate)} – ${dateLabel(event.endDate)}` : dateLabel(event.startDate);
 export const monthKey = (event: ArchiveEvent) => event.startDate?.slice(0, 7) ?? 'Undated';
+export function timelineGroups(events: ArchiveEvent[]): { month: string; events: ArchiveEvent[] }[] {
+  const groups: { month: string; events: ArchiveEvent[] }[] = [];
+  for (const event of events) {
+    const month = monthKey(event);
+    const previous = groups.at(-1);
+    if (previous?.month === month) previous.events.push(event);
+    else groups.push({ month, events: [event] });
+  }
+  return groups;
+}
 export const matchesEvent = (event: ArchiveEvent, query: string) => `${event.title} ${event.body} ${event.tags.map(tag => tag.title).join(' ')}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
 export const description = (body: string) => body.replace(/!\[[^\]]*\]\(\.\.\/attachments\/[A-Za-z0-9._-]+\)/g, '').trim();
 export const labelCount = (summary: ArchiveSummary, id: string) => summary.events.filter(event => event.tags.some(tag => tag.id === id)).length;

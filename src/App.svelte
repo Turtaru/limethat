@@ -6,13 +6,14 @@
   import Events from './features/Events.svelte';
   import Labels from './features/Labels.svelte';
   import Settings from './features/Settings.svelte';
+  import Welcome from './features/Welcome.svelte';
   import NotFound from './features/NotFound.svelte';
   import Connection from './features/Connection.svelte';
   import Editors from './features/Editors.svelte';
   import PictureViewer from './features/PictureViewer.svelte';
   import AppDock from './features/AppDock.svelte';
   import { labelKey } from './lib/archive-format';
-  import { pwa, startPwa } from './features/pwa.svelte';
+  import { installation, pwa, startPwa } from './features/pwa.svelte';
   const session = new Session();
   setContext(sessionKey, session);
   const routes = { '/': Events, '/events': Events, '/events/new': Editors, '/events/:id/edit': Editors, '/events/:id': Events, '/labels': Labels, '/labels/new': Editors, '/labels/:id/edit': Editors, '/labels/:id': Labels, '/settings': Settings, '*': NotFound };
@@ -30,6 +31,7 @@
   onMount(() => {
     if (import.meta.env.MODE === 'framing') return;
     try { session.theme = localStorage.getItem('limethat-theme') === 'light' ? 'light' : 'dark'; } catch { /* Theme persistence is optional. */ }
+    const stopInstallation = installation.watch();
     void session.workspace.restore();
     void startPwa();
     const online = () => { pwa.online = navigator.onLine; };
@@ -48,7 +50,7 @@
     };
     window.addEventListener('beforeunload', unload);
     document.addEventListener('click', navigate);
-    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', online); window.removeEventListener('beforeunload', unload); document.removeEventListener('click', navigate); };
+    return () => { stopInstallation(); window.removeEventListener('online', online); window.removeEventListener('offline', online); window.removeEventListener('beforeunload', unload); document.removeEventListener('click', navigate); };
   });
   $effect(() => {
     document.documentElement.dataset.theme = session.theme;
@@ -75,10 +77,8 @@
 
 {#if import.meta.env.MODE === 'framing'}
   <main><h1>Limethat image framing harness</h1>{#await import('./dev/ImageFrameHarness.svelte') then { default: Harness }}<Harness />{/await}</main>
-{:else if !session.workspace.capability.supported}
-  <main class="ui-shell"><p class="ui-error" role="alert">{session.workspace.capability.message}</p></main>
 {:else if !session.workspace.summary}
-  <AppShell><Settings /></AppShell>
+  <Welcome />
 {:else}
   <AppShell>
     {#snippet footer()}

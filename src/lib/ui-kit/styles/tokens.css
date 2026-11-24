@@ -25,7 +25,8 @@
   --radius-sheet: 1rem;
   --target-size: 2.75rem;
   --control-size: 3rem;
-  --content-width: 47.5rem;
+  --content-width: 62.5rem;
+  --dock-width: 28rem;
   --page-gutter: 1rem;
   --dock-clearance: calc(110px + env(safe-area-inset-bottom));
   --motion-duration: 220ms;

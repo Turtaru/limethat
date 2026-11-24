@@ -2,7 +2,7 @@
   import { Button } from '../lib/ui-kit';
   import { useSession } from './session.svelte';
   import { pwa } from './pwa.svelte';
-  let { compact = false }: { compact?: boolean } = $props();
+  let { compact = false, welcome = false }: { compact?: boolean; welcome?: boolean } = $props();
   const session = useSession();
   const workspace = session.workspace;
   const busy = $derived(!!workspace.operation || pwa.activating);
@@ -11,11 +11,14 @@
 <div class="ui-stack" aria-busy={busy}>
   {#if !compact}<p class="ui-muted">{workspace.archive ? `Archive: ${workspace.archive.root.name}` : 'Choose an existing version-1 archive, or create one in an empty folder. The folder remains the source of truth.'}</p>{/if}
   {#if !workspace.capability.supported}<p class="ui-error">{workspace.capability.message}</p>{/if}
-  <div class="ui-cluster">
+  <div class={welcome ? 'ui-stack' : 'ui-cluster'}>
     {#if workspace.archive}
       <Button disabled={busy} onclick={() => session.refresh()}>Refresh archive</Button>
       <Button disabled={busy || drafting} onclick={() => session.disconnect()}>Close archive</Button>
-    {:else}
+    {:else if welcome && workspace.capability.supported}
+      <Button variant="primary" disabled={busy || drafting} onclick={() => workspace.choose(true)}>Create an archive <span aria-hidden="true">↗</span></Button>
+      <Button disabled={busy || drafting} onclick={() => workspace.choose()}>Open existing archive</Button>
+    {:else if !welcome}
       <Button disabled={busy || drafting || !workspace.capability.supported} onclick={() => workspace.choose()}>Open archive</Button>
       <Button disabled={busy || drafting || !workspace.capability.supported} onclick={() => workspace.choose(true)}>Create archive</Button>
     {/if}

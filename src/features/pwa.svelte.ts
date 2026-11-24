@@ -1,3 +1,8 @@
+import { Installation } from './install';
+
+const installationState = $state({ standalone: false, installed: false, available: false, busy: false, message: '', error: '' });
+export const installation = new Installation(installationState);
+
 export const pwa = $state({ ready: false, update: false, activating: false, error: '', online: true });
 let registration: ServiceWorkerRegistration | undefined;
 
