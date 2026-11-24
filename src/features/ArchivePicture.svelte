@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { observeVisibility } from '../lib/visibility';
   import { router } from 'svelte-spa-router';
   import ImageFrameViewport from '../lib/images/ImageFrameViewport.svelte';
   import type { PictureFrame } from '../lib/archive-format';
@@ -13,13 +14,9 @@
   let visible = $state(false);
   let url = $state('');
   let error = $state('');
-  onMount(() => {
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) { visible = true; observer.disconnect(); }
-    }, { rootMargin: '300px' });
-    observer.observe(host);
-    return () => observer.disconnect();
-  });
+  onMount(() => observeVisibility(host, intersecting => {
+    if (thumbnail || intersecting) visible = intersecting;
+  }));
   $effect(() => {
     const archive = session.workspace.archive;
     const source = name;

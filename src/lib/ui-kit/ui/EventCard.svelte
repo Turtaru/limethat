@@ -1,3 +1,15 @@
+<script module lang="ts">
+  const formatters = new Map<string, { full: Intl.DateTimeFormat; month: Intl.DateTimeFormat }>();
+  function dateFormatters(locale: string) {
+    let cached = formatters.get(locale);
+    if (!cached) {
+      cached = { full: new Intl.DateTimeFormat(locale, { dateStyle: 'long' }), month: new Intl.DateTimeFormat(locale, { month: 'short' }) };
+      formatters.set(locale, cached);
+    }
+    return cached;
+  }
+</script>
+
 <script lang="ts">
   import type { HTMLAnchorAttributes } from 'svelte/elements';
   import type { Snippet } from 'svelte';
@@ -18,7 +30,8 @@
   let { href, title, date, image, picture, dateLabel, description, labels = [], locale = 'en', onclick }: Props = $props();
   const parsed = $derived(date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T12:00:00`) : null);
   const day = $derived(parsed && !Number.isNaN(parsed.getTime()) ? parsed : null);
-  const fullDate = $derived(day ? new Intl.DateTimeFormat(locale, { dateStyle: 'long' }).format(day) : 'Date unknown');
+  const formatter = $derived(dateFormatters(locale));
+  const fullDate = $derived(dateLabel ?? (day ? formatter.full.format(day) : 'Date unknown'));
 </script>
 
 <article class="ui-event-card">
@@ -32,7 +45,7 @@
       {#if day}
         <time class="ui-event-card__date" datetime={date}>
           <strong class="ui-event-card__day">{String(day.getDate()).padStart(2, '0')}</strong>
-          <span class="ui-event-card__month">{new Intl.DateTimeFormat(locale, { month: 'short' }).format(day)}<br>{day.getFullYear()}</span>
+          <span class="ui-event-card__month">{formatter.month.format(day)}<br>{day.getFullYear()}</span>
         </time>
       {:else}
         <span class="ui-event-card__date ui-event-card__undated">{dateLabel ?? date ?? 'No date'}</span>

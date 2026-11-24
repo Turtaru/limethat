@@ -17,6 +17,18 @@ test('timeline groups preserve event order, partial dates and undated entries wi
   assert.deepEqual(timelineGroups([]), []);
 });
 
+test('event search handles repeated queries and refreshed event objects', () => {
+  const event = { ...newEvent(), title: 'Summer', body: 'At the lake', tags: [{ id: '1', title: 'Family' }] };
+  assert.equal(matchesEvent(event, '   '), true);
+  assert.equal(matchesEvent(event, ' SUMMER '), true);
+  assert.equal(matchesEvent(event, 'lake'), true);
+  assert.equal(matchesEvent(event, 'FAMILY'), true);
+  assert.equal(matchesEvent(event, 'winter'), false);
+  const refreshed = { ...event, title: 'Winter' };
+  assert.equal(matchesEvent(refreshed, 'winter'), true);
+  assert.equal(matchesEvent(refreshed, 'summer'), false);
+});
+
 test('timeline grouping does not reorder noncontiguous dates', () => {
   const events = ['2026-10-30', '2026-09-11', '2026-10-12'].map(startDate => ({ ...newEvent(), startDate }));
   const groups = timelineGroups(events);

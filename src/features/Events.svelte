@@ -10,20 +10,30 @@
   import ArchivePicture from './ArchivePicture.svelte';
   import Markdown from '../lib/ui-kit/ui/Markdown.svelte';
   import Timeline from './Timeline.svelte';
+  import { eventListNavigation } from './event-list-navigation.svelte';
   let { params = {} }: { params?: Record<string, string> } = $props();
   const session = useSession();
   const summary = $derived(session.workspace.summary);
   const event = $derived(summary?.events.find(item => item.id.toLowerCase() === params.id?.toLowerCase()));
   let query = $state(new URLSearchParams(router.querystring).get('q') ?? '');
+  let appliedQuery = $state(new URLSearchParams(router.querystring).get('q') ?? '');
   let dateOpen = $state(false);
   let month = $state('');
   let deleting = $state(false);
   let confirmDelete = $state(false);
   let error = $state('');
-  const matches = $derived((summary?.events ?? []).filter(item => matchesEvent(item, query)));
+  const matches = $derived((summary?.events ?? []).filter(item => matchesEvent(item, appliedQuery)));
   const months = $derived([...new Set(matches.flatMap(item => item.startDate && item.startDate.length >= 7 ? [item.startDate.slice(0, 7)] : []))]);
-  $effect(() => { query = new URLSearchParams(router.querystring).get('q') ?? ''; });
-  function search() { history.replaceState(history.state, '', `#/events${query ? `?q=${encodeURIComponent(query)}` : ''}`); }
+  $effect(() => { appliedQuery = query = new URLSearchParams(router.querystring).get('q') ?? ''; });
+  $effect(() => {
+    const value = query;
+    const timer = setTimeout(() => { appliedQuery = value; }, 150);
+    return () => clearTimeout(timer);
+  });
+  function search(event: Event) {
+    query = (event.currentTarget as HTMLInputElement).value;
+    history.replaceState({ ...history.state, limethatEventList: undefined }, '', `#/events${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+  }
   async function jump() {
     dateOpen = false;
     await tick();
@@ -44,7 +54,7 @@
 
 {#if params.id}
   <div class="ui-stack">
-    <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href="#/events">← All events</a>{#if event}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { confirmDelete = true; error = ''; }}>Delete</Button>{/if}</div>
+    <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href={eventListNavigation.position?.url ?? '#/events'} data-restore-event-list>← All events</a>{#if event}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { confirmDelete = true; error = ''; }}>Delete</Button>{/if}</div>
     {#if event}
       <div class="ui-detail-layout">
         <div class="ui-stack ui-detail-media">

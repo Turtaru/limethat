@@ -14,7 +14,7 @@
           <span class="ui-activity__day" data-level={Math.max(0, Math.min(4, day.count))} aria-hidden="true"></span>
         </button>
       {:else}
-        <span class="ui-activity__empty" aria-hidden="true"><span class="ui-activity__day" data-level={Math.max(0, Math.min(4, day.count))} title={`${day.date}: ${day.count} events`}></span></span>
+        <span class="ui-activity__empty ui-activity__day" aria-hidden="true" data-level={Math.max(0, Math.min(4, day.count))} title={`${day.date}: ${day.count} events`}></span>
       {/if}
     {/each}
   </div>

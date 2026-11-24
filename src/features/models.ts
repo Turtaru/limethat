@@ -6,11 +6,15 @@ export const eventHref = (id: string) => `#/events/${encodeURIComponent(id)}`;
 // Keep a legacy string ID named "new" distinct from the creation route.
 export const labelHref = (id: string) => `#/labels/${id === 'new' ? '%6Eew' : encodeURIComponent(id)}`;
 export const pictureName = (path?: string) => path?.startsWith('attachments/') ? path.slice(12) : undefined;
+const monthFormatter = new Intl.DateTimeFormat('en', { timeZone: 'UTC', year: 'numeric', month: 'long' });
+const dayFormatter = new Intl.DateTimeFormat('en', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' });
+const searchText = new WeakMap<ArchiveEvent, string>();
+
 export function dateLabel(date: string | null): string {
   if (!date) return 'Date unknown';
   if (date.length === 4) return date;
   const exact = date.length === 10;
-  return new Intl.DateTimeFormat('en', { timeZone: 'UTC', year: 'numeric', month: 'long', ...(exact ? { day: 'numeric' as const } : {}) })
+  return (exact ? dayFormatter : monthFormatter)
     .format(new Date(`${exact ? date : `${date}-01`}T12:00:00Z`));
 }
 export const eventDates = (event: ArchiveEvent) => event.endDate ? `${dateLabel(event.startDate)} – ${dateLabel(event.endDate)}` : dateLabel(event.startDate);
@@ -25,7 +29,16 @@ export function timelineGroups(events: ArchiveEvent[]): { month: string; events:
   }
   return groups;
 }
-export const matchesEvent = (event: ArchiveEvent, query: string) => `${event.title} ${event.body} ${event.tags.map(tag => tag.title).join(' ')}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+export function matchesEvent(event: ArchiveEvent, query: string): boolean {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) return true;
+  let text = searchText.get(event);
+  if (text === undefined) {
+    text = `${event.title} ${event.body} ${event.tags.map(tag => tag.title).join(' ')}`.toLocaleLowerCase();
+    searchText.set(event, text);
+  }
+  return text.includes(normalized);
+}
 export const description = (body: string) => body
   .replace(/!\[[^\]]*\]\(\.\.\/attachments\/[A-Za-z0-9._-]+\)/g, '')
   .replace(/^## Photos[ \t]*\r?\n(?:[ \t]*\r?\n)*(?=#{1,2} )/gm, '')

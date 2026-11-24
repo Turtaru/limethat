@@ -246,15 +246,25 @@ export class Archive {
     const warnings = ['Manifest counts and hashes describe the original export, not current integrity.'];
     if (Array.isArray(manifest.skipped_media) && manifest.skipped_media.length) warnings.push('Some pictures were omitted from the original export.');
     const ids = new Set<string>();
+    const names: string[] = [];
     for await (const entry of directory.values()) {
-      if (entry.kind !== 'file' || !entry.name.endsWith('.md')) continue;
-      const path = `moments/${entry.name}`;
-      try {
-        const event = parseEvent(entry.name, await this.read(path));
-        requireValue(!ids.has(event.id.toLowerCase()), `Duplicate event UUID: ${event.id}`);
-        ids.add(event.id.toLowerCase());
-        events.push(event);
-      } catch (error) { unreadableEvents.push({ path, message: failure(error).message }); }
+      if (entry.kind === 'file' && entry.name.endsWith('.md')) names.push(entry.name);
+    }
+    for (let index = 0; index < names.length; index += 8) {
+      const batch = await Promise.all(names.slice(index, index + 8).map(async name => {
+        const path = `moments/${name}`;
+        try { return { path, event: parseEvent(name, await this.read(path)) }; }
+        catch (error) { return { path, error: failure(error).message }; }
+      }));
+      for (const result of batch) {
+        try {
+          if (!result.event) throw new Error(result.error);
+          const event = result.event;
+          requireValue(!ids.has(event.id.toLowerCase()), `Duplicate event UUID: ${event.id}`);
+          ids.add(event.id.toLowerCase());
+          events.push(event);
+        } catch (error) { unreadableEvents.push({ path: result.path, message: failure(error).message }); }
+      }
     }
     events.sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? '') || b.created.localeCompare(a.created));
     return { manifest, tagsSource, labels, events, unreadableEvents, warnings };

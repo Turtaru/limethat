@@ -4,6 +4,7 @@
   import { AppShell } from './lib/ui-kit';
   import { Session, sessionKey } from './features/session.svelte';
   import Events from './features/Events.svelte';
+  import { eventListNavigation, type EventListPosition } from './features/event-list-navigation.svelte';
   import Labels from './features/Labels.svelte';
   import Settings from './features/Settings.svelte';
   import Welcome from './features/Welcome.svelte';
@@ -45,6 +46,17 @@
       const href = anchor?.getAttribute('href');
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !href?.startsWith('#/') || !anchor || anchor.hasAttribute('download') || (anchor.target && anchor.target !== '_self')) return;
       event.preventDefault();
+      if (router.location === '/events' || router.location === '/') {
+        const items = document.querySelectorAll<HTMLElement>('.ui-timeline > li');
+        const visible = anchor.closest<HTMLElement>('.ui-timeline > li')
+          ?? Array.from(items).find(item => item.getBoundingClientRect().bottom > 160);
+        eventListNavigation.position = {
+          url: window.location.hash || '#/', y: window.scrollY,
+          eventId: visible?.id, offset: visible?.getBoundingClientRect().top, focusHref: href,
+        };
+        history.replaceState({ ...history.state, limethatEventList: { ...eventListNavigation.position } }, '');
+      }
+      if (anchor.hasAttribute('data-restore-event-list')) pendingListPosition = eventListNavigation.position;
       history.replaceState({ ...history.state, limethatFocus: href }, '');
       void push(href);
     };
@@ -61,14 +73,33 @@
     if (!archive) { previousArchive = null; return; }
     if (archive.root !== previousArchive) {
       previousArchive = archive.root;
+      eventListNavigation.position = null;
+      pendingListPosition = null;
+      history.replaceState({ ...history.state, limethatEventList: undefined }, '');
       session.reviewRequired = false;
       session.notice = `Opened ${archive.root.name}.`;
     }
   });
+  let pendingListPosition: EventListPosition | null = null;
   let routeLoadedOnce = false;
   async function routeLoaded() {
     if (!routeLoadedOnce) { routeLoadedOnce = true; return; }
     await tick();
+    const location = window.location.hash || '#/';
+    const position = pendingListPosition ?? history.state?.limethatEventList as EventListPosition | undefined;
+    pendingListPosition = null;
+    if (position && position.url === location && (router.location === '/events' || router.location === '/')) {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      if ((window.location.hash || '#/') !== location) return;
+      const item = position.eventId ? document.getElementById(position.eventId) : null;
+      window.scrollTo(0, item && position.offset !== undefined
+        ? window.scrollY + item.getBoundingClientRect().top - position.offset : position.y);
+      history.replaceState({ ...history.state, limethatEventList: { ...position } }, '');
+      const href = position.focusHref;
+      const link = href ? document.querySelector<HTMLElement>(`main a[href="${CSS.escape(href)}"]`) : null;
+      (link ?? item?.querySelector<HTMLElement>('a'))?.focus({ preventScroll: true });
+      return;
+    }
     const saved = history.state?.limethatFocus as string | undefined;
     const target = saved ? document.querySelector<HTMLElement>(`main a[href="${CSS.escape(saved)}"]`) : null;
     (target ?? document.querySelector<HTMLElement>('main'))?.focus({ preventScroll: true });
