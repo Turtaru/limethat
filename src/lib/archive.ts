@@ -59,7 +59,11 @@ export class Archive {
 
   private async read(path: string): Promise<string> {
     const { directory, name } = await this.location(path);
-    const file = await (await directory.getFileHandle(name)).getFile();
+    return this.readFile(await directory.getFileHandle(name), path);
+  }
+
+  private async readFile(handle: FileSystemFileHandle, path: string): Promise<string> {
+    const file = await handle.getFile();
     requireValue(file.size <= TEXT_LIMIT, `${path} exceeds 256 KB`, 'limit-exceeded');
     try { return decoder.decode(await file.arrayBuffer()); }
     catch (cause) { throw new ArchiveFailure('invalid-data', `Cannot decode UTF-8: ${path}`, [path], [], { cause }); }
@@ -262,14 +266,14 @@ export class Archive {
     const warnings = ['Manifest counts and hashes describe the original export, not current integrity.'];
     if (Array.isArray(manifest.skipped_media) && manifest.skipped_media.length) warnings.push('Some pictures were omitted from the original export.');
     const ids = new Set<string>();
-    const names: string[] = [];
+    const handles: FileSystemFileHandle[] = [];
     progress.phase = 'enumerating';
     report();
     const enumerationStart = performance.now();
     for await (const entry of directory.values()) {
-      if (entry.kind === 'file' && entry.name.endsWith('.md')) names.push(entry.name);
+      if (entry.kind === 'file' && entry.name.endsWith('.md')) handles.push(entry);
       progress.entries++;
-      progress.total = names.length;
+      progress.total = handles.length;
       progress.enumerationMs = performance.now() - enumerationStart;
       if (progress.entries % 32 === 0) report();
     }
@@ -277,11 +281,15 @@ export class Archive {
     progress.phase = 'reading';
     report();
     const readingStart = performance.now();
-    for (let index = 0; index < names.length; index += 8) {
+    for (let index = 0; index < handles.length; index += 8) {
       const batchStart = performance.now();
-      const batch = await Promise.all(names.slice(index, index + 8).map(async name => {
+      const batch = await Promise.all(handles.slice(index, index + 8).map(async handle => {
+        const name = handle.name;
         const path = `moments/${name}`;
-        try { return { path, event: parseEvent(name, await this.read(path)) }; }
+        try {
+          requireValue(safeName(name), 'Invalid archive path');
+          return { path, event: parseEvent(name, await this.readFile(handle, path)) };
+        }
         catch (error) { return { path, error: failure(error).message }; }
       }));
       for (const result of batch) {

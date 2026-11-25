@@ -22,6 +22,31 @@ async function fixture() {
   return { root, archive, original };
 }
 
+test('load and refresh reuse enumerated event handles without per-event lookups', async () => {
+  const { root, archive } = await fixture();
+  for (let index = 0; index < 9; index++) {
+    const event = newEvent();
+    await root.put(`moments/${event.filename}`, event.source);
+  }
+  const directory = await root.getDirectoryHandle('moments');
+  let directoryLookups = 0;
+  let fileLookups = 0;
+  const getDirectoryHandle = root.getDirectoryHandle.bind(root);
+  root.getDirectoryHandle = async (name, options) => {
+    if (name === 'moments') directoryLookups++;
+    return getDirectoryHandle(name, options);
+  };
+  const getFileHandle = directory.getFileHandle.bind(directory);
+  directory.getFileHandle = async (name, options) => {
+    fileLookups++;
+    return getFileHandle(name, options);
+  };
+  assert.equal((await archive.load()).events.length, 10);
+  assert.equal((await archive.refresh()).events.length, 10);
+  assert.equal(directoryLookups, 2);
+  assert.equal(fileLookups, 0);
+});
+
 test('loading progress counts event attempts separately from folder entries and unreadable files', async () => {
   const { root, archive } = await fixture();
   await root.put('moments/broken.md', 'not an event');
