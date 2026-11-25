@@ -6,6 +6,7 @@
   import { needsRelatedEventsTranslation, relatedEventGroups } from '../lib/related-events';
   import { failure } from '../lib/errors';
   const session = useSession();
+  const build = __APP_BUILD__;
   const summary = $derived(session.workspace.summary);
   const translation = $derived.by(() => {
     if (session.workspace.translationRecovery || !summary || !needsRelatedEventsTranslation(summary)) return null;
@@ -55,6 +56,7 @@
     </section>
   {/if}
   <section class="ui-section"><Field label="Color theme">{#snippet children(control)}<select class="ui-input" id={control.id} bind:value={session.theme} onchange={themeChanged}><option value="dark">Dark</option><option value="light">Light</option></select>{/snippet}</Field></section>
+  <section class="ui-section ui-stack"><h2>App version</h2><p class="ui-muted">Build: {build}</p></section>
   {#if pwa.update}<Button disabled={session.draftCount > 0 || !!session.workspace.operation || pwa.activating} onclick={applyUpdate}>{pwa.activating ? 'Updating…' : 'Update and reload'}</Button>{/if}
   {#if pwa.error}<p class="ui-error" role="alert">{pwa.error}</p>{/if}
 </div>
