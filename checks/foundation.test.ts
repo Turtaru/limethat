@@ -61,7 +61,28 @@ test('loading progress counts event attempts separately from folder entries and 
   assert.equal(last.unreadable, 1);
   assert.equal(summary.events.length, 1);
   assert.equal(reports[0].read, 0);
+  assert.ok(reports.some(report => report.phase === 'reading' && report.read === 1));
+  const diagnostics = archive.diagnostics.report('build');
+  assert.ok(diagnostics.includes('Text getFile: 2 samples'));
+  assert.ok(diagnostics.includes('Text arrayBuffer: 2 samples'));
+  assert.ok(diagnostics.includes('Text UTF-8 decode: 2 samples'));
+  assert.ok(diagnostics.includes('Text parseEvent: 2 samples'));
   assert.ok(last.elapsedMs >= last.enumerationMs + last.readingMs);
+});
+
+test('picture diagnostics distinguish thumbnails from original fallbacks', async () => {
+  const { root, archive } = await fixture();
+  await root.put('attachments/photo.jpg', 'original');
+  await archive.readPicture('photo.jpg');
+  await root.put('attachments/photo.jpg.thumb.jpg', 'thumb');
+  await archive.readPicture('photo.jpg');
+  const report = archive.diagnostics.report('build');
+  assert.ok(report.includes('Missing thumbnails (original fallback attempted): 1'));
+  assert.ok(report.includes('Thumbnails found: 1'));
+  assert.ok(report.includes('Original picture size: 1 samples, avg 8.0 bytes'));
+  assert.ok(report.includes('Thumbnail size: 1 samples, avg 5.0 bytes'));
+  assert.ok(report.includes('Picture getFile: 2 samples'));
+  assert.ok(!report.includes('photo.jpg'));
 });
 
 test('edits preserve unknown metadata lines, stable identity, date precision and large label IDs', () => {

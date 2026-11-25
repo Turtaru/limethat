@@ -2,6 +2,7 @@
   import { Button } from '../lib/ui-kit';
   import { useSession } from './session.svelte';
   import { pwa } from './pwa.svelte';
+  import LoadingDiagnostics from './LoadingDiagnostics.svelte';
   let { compact = false, welcome = false }: { compact?: boolean; welcome?: boolean } = $props();
   const session = useSession();
   const workspace = session.workspace;
@@ -52,6 +53,7 @@
           <dt>Unreadable event files</dt><dd>{progress.unreadable}</dd>
         </dl>
         <p class="ui-muted">Timings cover archive loading, not list rendering. Take a screenshot here if loading stalls. No file names or contents are shown.</p>
+        <LoadingDiagnostics />
       {:else}
         <p class="ui-muted">{workspace.operation ? 'Waiting for folder selection, permission, or archive setup…' : 'Open an archive to see file counts and loading timings.'}</p>
       {/if}

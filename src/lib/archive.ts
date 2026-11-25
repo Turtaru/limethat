@@ -7,6 +7,7 @@ import { ArchiveFailure, failure, requireValue } from './errors';
 import { processPicture } from './pictures';
 import { needsRelatedEventsTranslation, relatedEventGroups } from './related-events';
 import type { PictureStage } from './pictures';
+import { LoadingDiagnostics } from './loading-diagnostics';
 
 export interface MutationResult<T> {
   value: T;
@@ -35,6 +36,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export class Archive {
+  readonly diagnostics = new LoadingDiagnostics();
   private busy = false;
 
   constructor(readonly root: FileSystemDirectoryHandle) {}
@@ -62,10 +64,16 @@ export class Archive {
     return this.readFile(await directory.getFileHandle(name), path);
   }
 
-  private async readFile(handle: FileSystemFileHandle, path: string): Promise<string> {
-    const file = await handle.getFile();
+  private async readFile(handle: FileSystemFileHandle, path: string, diagnose = false): Promise<string> {
+    const file = await (diagnose ? this.diagnostics.measure('Text getFile', () => handle.getFile()) : handle.getFile());
     requireValue(file.size <= TEXT_LIMIT, `${path} exceeds 256 KB`, 'limit-exceeded');
-    try { return decoder.decode(await file.arrayBuffer()); }
+    try {
+      const bytes = await (diagnose ? this.diagnostics.measure('Text arrayBuffer', () => file.arrayBuffer()) : file.arrayBuffer());
+      if (diagnose) this.diagnostics.record('Text file size', file.size, 'bytes');
+      const start = performance.now();
+      try { return decoder.decode(bytes); }
+      finally { if (diagnose) this.diagnostics.record('Text UTF-8 decode', performance.now() - start); }
+    }
     catch (cause) { throw new ArchiveFailure('invalid-data', `Cannot decode UTF-8: ${path}`, [path], [], { cause }); }
   }
 
@@ -288,9 +296,17 @@ export class Archive {
         const path = `moments/${name}`;
         try {
           requireValue(safeName(name), 'Invalid archive path');
-          return { path, event: parseEvent(name, await this.readFile(handle, path)) };
+          const source = await this.readFile(handle, path, true);
+          const parseStart = performance.now();
+          try { return { path, event: parseEvent(name, source) }; }
+          finally { this.diagnostics.record('Text parseEvent', performance.now() - parseStart); }
         }
         catch (error) { return { path, error: failure(error).message }; }
+        finally {
+          progress.read++;
+          progress.readingMs = performance.now() - readingStart;
+          report();
+        }
       }));
       for (const result of batch) {
         try {
@@ -301,7 +317,6 @@ export class Archive {
           events.push(event);
         } catch (error) { unreadableEvents.push({ path: result.path, message: failure(error).message }); }
       }
-      progress.read += batch.length;
       progress.unreadable = unreadableEvents.length;
       progress.readingMs = performance.now() - readingStart;
       progress.slowestBatchMs = Math.max(progress.slowestBatchMs, performance.now() - batchStart);
@@ -439,15 +454,22 @@ export class Archive {
   async readPicture(name: string, thumbnail = true): Promise<File> {
     requireValue(safeName(name), 'Invalid picture name');
     try {
-      const directory = await this.root.getDirectoryHandle('attachments');
+      const directory = await this.diagnostics.measure('Picture directory lookup', () => this.root.getDirectoryHandle('attachments'));
       let handle: FileSystemFileHandle;
-      try { handle = await directory.getFileHandle(thumbnail ? `${name}.thumb.jpg` : name); }
+      let usedThumbnail = thumbnail;
+      try {
+        handle = await this.diagnostics.measure('Picture file lookup', () => directory.getFileHandle(thumbnail ? `${name}.thumb.jpg` : name));
+        if (thumbnail) this.diagnostics.increment('Thumbnails found');
+      }
       catch (error) {
         if (!(error instanceof DOMException) || error.name !== 'NotFoundError' || !thumbnail) throw error;
-        handle = await directory.getFileHandle(name);
+        this.diagnostics.increment('Missing thumbnails (original fallback attempted)');
+        usedThumbnail = false;
+        handle = await this.diagnostics.measure('Picture fallback lookup', () => directory.getFileHandle(name));
       }
-      const file = await handle.getFile();
+      const file = await this.diagnostics.measure('Picture getFile', () => handle.getFile());
       requireValue(file.size <= PICTURE_LIMIT, 'Picture exceeds 25 MB', 'limit-exceeded');
+      this.diagnostics.record(usedThumbnail ? 'Thumbnail size' : 'Original picture size', file.size, 'bytes');
       return file;
     } catch (error) { throw failure(error); }
   }

@@ -4,6 +4,7 @@ import type { ArchiveEvent, ArchiveSummary, EventDraft } from './archive-format'
 import { ArchiveFailure, failure, permissionRequired } from './errors';
 import { chooseFolder, folderCapability, folderPermission, forgetFolder, rememberFolder, requestFolderPermission, restoreFolder } from './folder-access';
 import type { PictureStage } from './pictures';
+import type { LoadingDiagnostics } from './loading-diagnostics';
 
 export type WorkspaceState = 'unsupported' | 'no-folder' | 'permission-required' | 'loading' | 'ready' | 'error';
 export type MutationOutcome<T> =
@@ -23,6 +24,7 @@ export class Workspace {
   error = $state.raw<ArchiveFailure | null>(null);
   persistenceWarning = $state<string | null>(null);
   loadProgress = $state.raw<ArchiveLoadProgress | null>(null);
+  diagnostics = $state.raw<LoadingDiagnostics | null>(null);
   private pending: { handle: FileSystemDirectoryHandle; create: boolean } | null = null;
 
   private start(operation: string): void {
@@ -52,6 +54,7 @@ export class Workspace {
     }
     this.state = 'loading';
     const candidate = new Archive(handle);
+    this.diagnostics = candidate.diagnostics;
     const setup = create ? await candidate.initialize() : null;
     const translationRecovery = await candidate.hasTranslationRecovery();
     let summary: ArchiveSummary | null;
@@ -122,6 +125,7 @@ export class Workspace {
     try {
       await forgetFolder();
       this.archive = null;
+      this.diagnostics = null;
       this.summary = null;
       this.translationRecovery = false;
       this.pending = null;
