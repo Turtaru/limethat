@@ -3,6 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 /** Generates a versioned offline shell from the finished build, including public assets and every lazy chunk. */
 function offlineShell(): Plugin {
@@ -63,5 +64,8 @@ self.addEventListener('fetch', event => {
 
 export default defineConfig({
   base: '/limethat/',
+  define: {
+    __APP_BUILD__: JSON.stringify(`${process.env.GITHUB_SHA?.slice(0, 8) ?? execFileSync('git', ['rev-parse', '--short=8', 'HEAD'], { encoding: 'utf8' }).trim()} / ${new Date().toISOString()}`),
+  },
   plugins: [svelte(), offlineShell()],
 });

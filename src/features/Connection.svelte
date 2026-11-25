@@ -7,6 +7,7 @@
   const workspace = session.workspace;
   const busy = $derived(!!workspace.operation || pwa.activating);
   const drafting = $derived(session.draftCount > 0);
+  const build = __APP_BUILD__;
   let showDetails = $state(false);
   let now = $state(0);
   const progress = $derived(workspace.loadProgress);
@@ -37,6 +38,7 @@
   <Button aria-expanded={showDetails} onclick={() => { showDetails = !showDetails; }}>{showDetails ? 'Hide loading details' : 'Show loading details'}</Button>
   {#if showDetails}
     <section class="ui-load-details ui-stack" aria-label="Archive loading details">
+      <p class="ui-muted">Build: {build}</p>
       {#if progress}
         <p>{progress.phase === 'metadata' ? 'Reading archive metadata' : progress.phase === 'enumerating' ? 'Listing folder entries' : progress.phase === 'reading' ? `Read ${progress.read}/${progress.total} event files` : `Finished reading ${progress.read}/${progress.total} event files`}{workspace.error ? ' — stopped with an error' : ''}</p>
         <progress aria-label="Event files read" max={Math.max(1, progress.total)} value={progress.phase === 'reading' || progress.phase === 'complete' ? progress.read : undefined}></progress>
