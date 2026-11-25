@@ -1,5 +1,5 @@
 import { Archive } from './archive';
-import type { LabelDraft, MutationResult } from './archive';
+import type { ArchiveLoadProgress, LabelDraft, MutationResult } from './archive';
 import type { ArchiveEvent, ArchiveSummary, EventDraft } from './archive-format';
 import { ArchiveFailure, failure, permissionRequired } from './errors';
 import { chooseFolder, folderCapability, folderPermission, forgetFolder, rememberFolder, requestFolderPermission, restoreFolder } from './folder-access';
@@ -22,12 +22,14 @@ export class Workspace {
   operation = $state<string | null>(null);
   error = $state.raw<ArchiveFailure | null>(null);
   persistenceWarning = $state<string | null>(null);
+  loadProgress = $state.raw<ArchiveLoadProgress | null>(null);
   private pending: { handle: FileSystemDirectoryHandle; create: boolean } | null = null;
 
   private start(operation: string): void {
     if (this.operation || this.archive?.operating) throw new ArchiveFailure('busy', 'Another workspace operation is running; wait before retrying.');
     this.operation = operation;
     this.error = null;
+    if (['opening', 'creating', 'restoring', 'reconnecting', 'closing'].includes(operation)) this.loadProgress = null;
   }
 
   private failed(error: unknown): ArchiveFailure {
@@ -53,7 +55,7 @@ export class Workspace {
     const setup = create ? await candidate.initialize() : null;
     const translationRecovery = await candidate.hasTranslationRecovery();
     let summary: ArchiveSummary | null;
-    try { summary = translationRecovery ? null : await candidate.load(); }
+    try { summary = translationRecovery ? null : await candidate.load(progress => { this.loadProgress = progress; }); }
     catch (cause) {
       if (setup) throw new ArchiveFailure('partial-change', 'Archive creation completed, but opening it failed. Reopen this folder; do not repeat creation.', setup.affectedPaths, [], { cause });
       throw cause;

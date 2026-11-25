@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Archive } from '../src/lib/archive';
+import { Archive, type ArchiveLoadProgress } from '../src/lib/archive';
 import {
   editEvent, labelKey, newEvent, nextLabelId, parseEvent, parseLabels, serialize, validateDate, validateFrame,
 } from '../src/lib/archive-format';
@@ -21,6 +21,23 @@ async function fixture() {
   await root.put(`moments/${original.filename}`, original.source);
   return { root, archive, original };
 }
+
+test('loading progress counts event attempts separately from folder entries and unreadable files', async () => {
+  const { root, archive } = await fixture();
+  await root.put('moments/broken.md', 'not an event');
+  await root.put('moments/ignored.md.backup-example', 'backup');
+  const reports: ArchiveLoadProgress[] = [];
+  const summary = await archive.load(progress => reports.push(progress));
+  assert.deepEqual([...new Set(reports.map(report => report.phase))], ['metadata', 'enumerating', 'reading', 'complete']);
+  const last = reports.at(-1)!;
+  assert.equal(last.entries, 3);
+  assert.equal(last.total, 2);
+  assert.equal(last.read, 2);
+  assert.equal(last.unreadable, 1);
+  assert.equal(summary.events.length, 1);
+  assert.equal(reports[0].read, 0);
+  assert.ok(last.elapsedMs >= last.enumerationMs + last.readingMs);
+});
 
 test('edits preserve unknown metadata lines, stable identity, date precision and large label IDs', () => {
   const initial = newEvent();

@@ -13,6 +13,18 @@ export interface MutationResult<T> {
   affectedPaths: string[];
   recoveryPaths: string[];
 }
+export interface ArchiveLoadProgress {
+  phase: 'metadata' | 'enumerating' | 'reading' | 'complete';
+  startedAt: number;
+  elapsedMs: number;
+  enumerationMs: number;
+  readingMs: number;
+  entries: number;
+  total: number;
+  read: number;
+  unreadable: number;
+  slowestBatchMs: number;
+}
 export interface LabelDraft { title: string; picture?: string; picture_frame?: PictureFrame }
 interface TextChange { path: string; source: string | null; next: string | null }
 
@@ -235,7 +247,11 @@ export class Archive {
     });
   }
 
-  private async readArchive(): Promise<ArchiveSummary> {
+  private async readArchive(onprogress?: (progress: ArchiveLoadProgress) => void): Promise<ArchiveSummary> {
+    const startedAt = performance.now();
+    const progress: ArchiveLoadProgress = { phase: 'metadata', startedAt, elapsedMs: 0, enumerationMs: 0, readingMs: 0, entries: 0, total: 0, read: 0, unreadable: 0, slowestBatchMs: 0 };
+    const report = () => onprogress?.({ ...progress, elapsedMs: performance.now() - startedAt });
+    report();
     const manifest = parseManifest(await this.read('manifest.json'));
     const tagsSource = await this.read('tags.json');
     const labels = parseLabels(tagsSource);
@@ -247,10 +263,22 @@ export class Archive {
     if (Array.isArray(manifest.skipped_media) && manifest.skipped_media.length) warnings.push('Some pictures were omitted from the original export.');
     const ids = new Set<string>();
     const names: string[] = [];
+    progress.phase = 'enumerating';
+    report();
+    const enumerationStart = performance.now();
     for await (const entry of directory.values()) {
       if (entry.kind === 'file' && entry.name.endsWith('.md')) names.push(entry.name);
+      progress.entries++;
+      progress.total = names.length;
+      progress.enumerationMs = performance.now() - enumerationStart;
+      if (progress.entries % 32 === 0) report();
     }
+    progress.enumerationMs = performance.now() - enumerationStart;
+    progress.phase = 'reading';
+    report();
+    const readingStart = performance.now();
     for (let index = 0; index < names.length; index += 8) {
+      const batchStart = performance.now();
       const batch = await Promise.all(names.slice(index, index + 8).map(async name => {
         const path = `moments/${name}`;
         try { return { path, event: parseEvent(name, await this.read(path)) }; }
@@ -265,12 +293,19 @@ export class Archive {
           events.push(event);
         } catch (error) { unreadableEvents.push({ path: result.path, message: failure(error).message }); }
       }
+      progress.read += batch.length;
+      progress.unreadable = unreadableEvents.length;
+      progress.readingMs = performance.now() - readingStart;
+      progress.slowestBatchMs = Math.max(progress.slowestBatchMs, performance.now() - batchStart);
+      report();
     }
     events.sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? '') || b.created.localeCompare(a.created));
+    progress.phase = 'complete';
+    report();
     return { manifest, tagsSource, labels, events, unreadableEvents, warnings };
   }
 
-  async load(): Promise<ArchiveSummary> { return this.exclusive(() => this.readArchive()); }
+  async load(onprogress?: (progress: ArchiveLoadProgress) => void): Promise<ArchiveSummary> { return this.exclusive(() => this.readArchive(onprogress)); }
   async refresh(): Promise<ArchiveSummary> { return this.load(); }
 
   async createEvent(draft: EventDraft): Promise<MutationResult<ArchiveEvent>> {

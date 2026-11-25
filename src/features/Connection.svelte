@@ -7,6 +7,16 @@
   const workspace = session.workspace;
   const busy = $derived(!!workspace.operation || pwa.activating);
   const drafting = $derived(session.draftCount > 0);
+  let showDetails = $state(false);
+  let now = $state(0);
+  const progress = $derived(workspace.loadProgress);
+  const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+  $effect(() => {
+    if (!showDetails || !workspace.operation) return;
+    now = performance.now();
+    const timer = setInterval(() => { now = performance.now(); }, 1000);
+    return () => clearInterval(timer);
+  });
 </script>
 <div class="ui-stack" aria-busy={busy}>
   {#if !compact}<p class="ui-muted">{workspace.archive ? `Archive: ${workspace.archive.root.name}` : 'Choose an existing version-1 archive, or create one in an empty folder. The folder remains the source of truth.'}</p>{/if}
@@ -24,6 +34,27 @@
     {/if}
     {#if workspace.state === 'permission-required'}<Button disabled={busy} onclick={() => workspace.reconnect()}>Reconnect</Button>{/if}
   </div>
+  <Button aria-expanded={showDetails} onclick={() => { showDetails = !showDetails; }}>{showDetails ? 'Hide loading details' : 'Show loading details'}</Button>
+  {#if showDetails}
+    <section class="ui-load-details ui-stack" aria-label="Archive loading details">
+      {#if progress}
+        <p>{progress.phase === 'metadata' ? 'Reading archive metadata' : progress.phase === 'enumerating' ? 'Listing folder entries' : progress.phase === 'reading' ? `Read ${progress.read}/${progress.total} event files` : `Finished reading ${progress.read}/${progress.total} event files`}{workspace.error ? ' — stopped with an error' : ''}</p>
+        <progress aria-label="Event files read" max={Math.max(1, progress.total)} value={progress.phase === 'reading' || progress.phase === 'complete' ? progress.read : undefined}></progress>
+        <dl>
+          <dt>Elapsed</dt><dd>{seconds(workspace.operation && progress.phase !== 'complete' ? Math.max(progress.elapsedMs, now - progress.startedAt) : progress.elapsedMs)}</dd>
+          <dt>Folder entries scanned (including backups)</dt><dd>{progress.entries}</dd>
+          <dt>Event files found</dt><dd>{progress.total}{progress.phase === 'enumerating' ? ' (still counting)' : ''}</dd>
+          <dt>Folder listing</dt><dd>{seconds(progress.enumerationMs)}</dd>
+          <dt>Reading and parsing</dt><dd>{seconds(progress.readingMs)}</dd>
+          <dt>Slowest batch (up to 8 files)</dt><dd>{seconds(progress.slowestBatchMs)}</dd>
+          <dt>Unreadable event files</dt><dd>{progress.unreadable}</dd>
+        </dl>
+        <p class="ui-muted">Timings cover archive loading, not list rendering. Take a screenshot here if loading stalls. No file names or contents are shown.</p>
+      {:else}
+        <p class="ui-muted">{workspace.operation ? 'Waiting for folder selection, permission, or archive setup…' : 'Open an archive to see file counts and loading timings.'}</p>
+      {/if}
+    </section>
+  {/if}
   {#if busy}<p class="ui-muted" role="status">{pwa.activating ? 'Updating app' : workspace.operation}…</p>{/if}
   {#if workspace.persistenceWarning}<p class="ui-error">{workspace.persistenceWarning}</p>{/if}
   {#if workspace.error}
