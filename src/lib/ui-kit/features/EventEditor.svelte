@@ -56,7 +56,7 @@
   }
 </script>
 
-<EditorPage title={heading} disabled={saving} {oncancel}>
+<EditorPage title={heading} {saving} {oncancel}>
   <form id={formId} class="ui-stack" onsubmit={save} aria-busy={saving || preparing}>
     {#if !pictureEditor}
     <Field label="Add pictures" help={`Images up to ${maxPictureBytes / 1024 / 1024} MB each.${draft.pictures.length ? ` Selected: ${draft.pictures.map(file => file.name).join(', ')}.` : ''}`} >
@@ -92,7 +92,7 @@
       </div>
     </fieldset>
     {#if error}<p class="ui-error" role="alert">{error}</p>{/if}
-    {#if disabled}<p class="ui-error">Saving is unavailable. Resolve the archive status before retrying. Your draft remains here.</p>{/if}
+    {#if disabled && !saving}<p class="ui-error">Saving is unavailable. Resolve the archive status before retrying. Your draft remains here.</p>{/if}
   </form>
   {#if recovery && disabled && !saving}{@render recovery()}{/if}
   {#snippet footer()}
