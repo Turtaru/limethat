@@ -60,6 +60,7 @@
     </section>
   {/if}
   {#if busy}<p class="ui-muted" role="status">{pwa.activating ? 'Updating app' : workspace.operation}…</p>{/if}
+  {#if workspace.snapshotWarning}<p class="ui-error" role="status">{workspace.snapshotWarning}</p>{/if}
   {#if workspace.persistenceWarning}<p class="ui-error">{workspace.persistenceWarning}</p>{/if}
   {#if workspace.error}
     <div class="ui-error" role="alert"><p>{workspace.error.message}</p>

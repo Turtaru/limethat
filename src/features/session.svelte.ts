@@ -24,7 +24,7 @@ export class Session {
   readonly eventDrafts = new Map<string, EventPageDraft>();
   readonly labelDrafts = new Map<string, LabelPageDraft>();
   viewer = $state<{ name: string; alt: string; section?: 'events' | 'labels' } | null>(null);
-  get canWrite() { return this.workspace.state === 'ready' && !this.workspace.translationRecovery && !this.workspace.operation && !this.reviewRequired && !pwa.activating; }
+  get canWrite() { return this.workspace.state === 'ready' && !this.workspace.snapshotStatus && !this.workspace.translationRecovery && !this.workspace.operation && !this.reviewRequired && !pwa.activating; }
   editEvent(event: ArchiveEvent | null) { void push(event ? `${eventHref(event.id)}/edit` : '/events/new'); }
   editLabel(label: Label | null) { void push(label ? `${labelHref(labelKey(label.id))}/edit` : '/labels/new'); }
 

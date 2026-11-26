@@ -6,6 +6,7 @@ import { chooseFolder, folderCapability, folderPermission, forgetFolder, remembe
 import type { PictureStage } from './pictures';
 import type { LoadingDiagnostics } from './loading-diagnostics';
 import { clearPictureCache } from './picture-cache';
+import { clearEventSnapshots } from './event-snapshot';
 
 export type WorkspaceState = 'unsupported' | 'no-folder' | 'permission-required' | 'loading' | 'ready' | 'error';
 export type MutationOutcome<T> =
@@ -13,7 +14,7 @@ export type MutationOutcome<T> =
   | { status: 'saved'; result: MutationResult<T>; refresh: 'failed'; refreshError: ArchiveFailure }
   | { status: 'failed'; error: ArchiveFailure };
 
-/** Holds verified folder snapshots and operation status; views retain their own unsaved drafts and navigation decisions. */
+/** Holds folder snapshots and operation status. Cached/partial snapshots are read-only until folder verification completes; views own drafts and navigation. */
 export class Workspace {
   readonly capability = folderCapability();
   state = $state<WorkspaceState>(this.capability.supported ? 'no-folder' : 'unsupported');
@@ -28,6 +29,9 @@ export class Workspace {
   diagnostics = $state.raw<LoadingDiagnostics | null>(null);
   thumbnailProgress = $state.raw<ThumbnailProgress | null>(null);
   pictureCacheWarning = $state('');
+  snapshotStatus = $state<'cached' | 'building' | null>(null);
+  snapshotSavedAt = $state<number | null>(null);
+  snapshotWarning = $state('');
   private pending: { handle: FileSystemDirectoryHandle; create: boolean } | null = null;
 
   private start(operation: string): void {
@@ -60,21 +64,48 @@ export class Workspace {
     this.diagnostics = candidate.diagnostics;
     this.thumbnailProgress = null;
     this.pictureCacheWarning = '';
+    this.snapshotStatus = null;
+    this.snapshotSavedAt = null;
+    this.snapshotWarning = '';
     const setup = create ? await candidate.initialize() : null;
     const translationRecovery = await candidate.hasTranslationRecovery();
+    let cached = null;
+    if (!translationRecovery && !create) {
+      try { cached = await candidate.eventCache.read(); }
+      catch { this.snapshotWarning = 'Cached events unavailable; rebuilding from the archive folder.'; }
+    }
+    const preview = (summary: ArchiveSummary, status: 'cached' | 'building') => {
+      this.archive = candidate;
+      this.summary = summary;
+      this.translationRecovery = false;
+      this.pending = null;
+      this.permission = 'granted';
+      this.snapshotStatus = status;
+      this.state = 'ready';
+    };
+    if (cached) {
+      this.snapshotSavedAt = cached.savedAt;
+      candidate.diagnostics.increment('Event snapshot cache hits');
+      preview(cached.summary, 'cached');
+    } else if (!translationRecovery) candidate.diagnostics.increment('Event snapshot cache misses');
     let summary: ArchiveSummary | null;
-    try { summary = translationRecovery ? null : await candidate.load(progress => { this.loadProgress = progress; }); }
+    try {
+      summary = translationRecovery ? null : await candidate.load(progress => { this.loadProgress = progress; },
+        cached ? undefined : partial => { preview(partial, 'building'); }, cached ?? undefined);
+    }
     catch (cause) {
       if (setup) throw new ArchiveFailure('partial-change', 'Archive creation completed, but opening it failed. Reopen this folder; do not repeat creation.', setup.affectedPaths, [], { cause });
       throw cause;
     }
-    // Commit the replacement only after its contents have loaded successfully.
+    // Cached/partial data may already be visible, but opening blocks edits until the folder check finishes.
     this.archive = candidate;
     this.summary = summary;
     this.translationRecovery = translationRecovery;
     this.pending = null;
     this.permission = 'granted';
     this.state = translationRecovery ? 'error' : 'ready';
+    this.snapshotStatus = null;
+    if (summary) await this.persistSnapshot();
     if (translationRecovery) this.error = new ArchiveFailure('conflict', 'An unfinished migration needs rollback in Settings.');
     try {
       await rememberFolder(handle);
@@ -133,6 +164,9 @@ export class Workspace {
       this.diagnostics = null;
       this.thumbnailProgress = null;
       this.pictureCacheWarning = '';
+      this.snapshotStatus = null;
+      this.snapshotSavedAt = null;
+      this.snapshotWarning = '';
       this.summary = null;
       this.translationRecovery = false;
       this.pending = null;
@@ -153,6 +187,8 @@ export class Workspace {
         throw new ArchiveFailure('conflict', 'An unfinished migration needs rollback in Settings.');
       }
       this.summary = await this.archive.refresh();
+      this.snapshotStatus = null;
+      await this.persistSnapshot();
       this.state = 'ready';
       this.permission = 'granted';
     } catch (error) { this.failed(error); }
@@ -163,12 +199,15 @@ export class Workspace {
     this.start(name);
     try {
       if (!this.archive || (!this.summary && !recovery)) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
+      if (this.snapshotStatus && !recovery) throw new ArchiveFailure('busy', 'Wait for archive verification before editing cached or incomplete events.');
       if (this.translationRecovery && !recovery) throw new ArchiveFailure('conflict', 'Roll back the unfinished migration in Settings before editing.');
       if (this.pending) throw new ArchiveFailure('permission-required', 'Reconnect or reopen a folder before editing.');
       const result = await action(this.archive, this.summary!);
       this.translationRecovery = await this.archive.hasTranslationRecovery();
       try {
         this.summary = await this.archive.refresh();
+        this.snapshotStatus = null;
+        await this.persistSnapshot();
         this.state = 'ready';
         this.permission = 'granted';
         return { status: 'saved', result, refresh: 'ready' };
@@ -204,6 +243,23 @@ export class Workspace {
       if (!this.archive) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
       await this.archive.createMissingThumbnails(progress => { this.thumbnailProgress = progress; });
     } catch (error) { this.failed(error); }
+    finally { this.operation = null; }
+  }
+
+  private async persistSnapshot(): Promise<void> {
+    if (!this.archive || !this.summary || this.snapshotStatus) return;
+    try {
+      await this.archive.eventCache.save(this.summary, this.archive.eventFileStamps);
+      this.snapshotSavedAt = Date.now();
+      this.snapshotWarning = '';
+      this.archive.diagnostics.increment('Event snapshots saved');
+    } catch { this.snapshotWarning = 'Event cache could not be saved. Browsing still works; the next opening may need to rebuild.'; }
+  }
+
+  async clearEventCache(): Promise<void> {
+    this.start('clearing event cache');
+    try { await clearEventSnapshots(); this.snapshotSavedAt = null; this.snapshotWarning = ''; }
+    catch { this.snapshotWarning = 'Could not clear cached events. Close other tabs and retry.'; }
     finally { this.operation = null; }
   }
 

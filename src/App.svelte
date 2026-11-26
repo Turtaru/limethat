@@ -278,7 +278,10 @@
     {/snippet}
     <div class="ui-stack">
       {#if session.notice}<p class={session.workspace.state === 'ready' ? 'ui-sr-only' : 'ui-status'} role="status">{session.notice}</p>{/if}
-      {#if !session.workspace.translationRecovery && router.location !== '/settings' && (session.workspace.state !== 'ready' || session.reviewRequired || session.workspace.persistenceWarning)}<Connection />{/if}
+      {#if !session.workspace.translationRecovery && router.location !== '/settings' && (session.workspace.state !== 'ready' || session.reviewRequired || session.workspace.persistenceWarning || session.workspace.snapshotWarning)}<Connection />{/if}
+      {#if session.workspace.snapshotStatus}
+        <p class="ui-status" role="status">{session.workspace.snapshotStatus === 'cached' ? 'Showing cached events; checking the archive folder.' : 'Building this device’s event index; the list is incomplete.'} {session.workspace.loadProgress ? `${session.workspace.loadProgress.read}/${session.workspace.loadProgress.total} event files checked.` : ''} Editing stays disabled until verification finishes.</p>
+      {/if}
       {#if session.workspace.summary}
         {#if session.workspace.summary.unreadableEvents.length}<div class="ui-error" role="alert"><p>{session.workspace.summary.unreadableEvents.length} unreadable events; they are not included below. Label rename/delete is blocked until resolved.</p><ul>{#each session.workspace.summary.unreadableEvents as item}<li><code>{item.path}</code>: {item.message}</li>{/each}</ul></div>{/if}
       {/if}

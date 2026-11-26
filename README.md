@@ -2,7 +2,7 @@
 
 A folder-based journal for your moments, notes, and pictures. Limethat is a progressive web app (PWA): use it in your browser or install it as an app where supported.
 
-Your archive is a folder you choose, not a database hidden inside the app. Events are Markdown (`.md`) files, pictures are ordinary JPEG files, and labels live in JSON. Limethat reads and writes those files directly. No account, backend, or uploads. A disposable browser-local picture cache speeds up repeat viewing; Markdown and labels remain folder-only.
+Your archive is a folder you choose, not a database hidden inside the app. Events are Markdown (`.md`) files, pictures are ordinary JPEG files, and labels live in JSON. Limethat reads and writes those files directly. No account, backend, or uploads. Disposable browser-local caches speed up repeat viewing. This browser stores event text, labels, archive metadata and displayed pictures in IndexedDB. Another device builds its own index; no index file is written to your archive. Clear either cache in Settings.
 
 Browse a timeline, search your entries, organize them with labels, and add pictures. Light and dark themes are included.
 

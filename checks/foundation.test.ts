@@ -7,6 +7,7 @@ import {
 import type { ArchiveEvent, EventDraft } from '../src/lib/archive-format';
 import { ArchiveFailure } from '../src/lib/errors';
 import { defaultFrame, pictureBounds, resizedFrame, zoomFrame } from '../src/lib/pictures';
+import { encodeSnapshot, decodeSnapshot } from '../src/lib/event-snapshot';
 import { MemoryFolder } from './memory-folder';
 
 function draft(event: ArchiveEvent, title = event.title): EventDraft {
@@ -21,6 +22,19 @@ async function fixture() {
   await root.put(`moments/${original.filename}`, original.source);
   return { root, archive, original };
 }
+
+test('snapshot reopen reuses unchanged files and reads externally edited events', async () => {
+  const { archive, root, original } = await fixture();
+  const second = newEvent();
+  await root.put(`moments/${second.filename}`, second.source);
+  const snapshot = decodeSnapshot(encodeSnapshot(await archive.load(), archive.eventFileStamps));
+  await root.put(`moments/${original.filename}`, original.source + '\nExternal edit');
+  const reopened = new Archive(root.handle());
+  const summary = await reopened.load(undefined, undefined, snapshot);
+  assert.equal(summary.events.length, 2);
+  assert.ok(summary.events.find(event => event.id === original.id)?.source.endsWith('External edit'));
+  assert.ok(reopened.diagnostics.report('build').includes('Event files reused from snapshot: 1'));
+});
 
 test('load and refresh reuse enumerated event handles without per-event lookups', async () => {
   const { root, archive } = await fixture();

@@ -9,6 +9,8 @@ import { needsRelatedEventsTranslation, relatedEventGroups } from './related-eve
 import type { PictureStage } from './pictures';
 import { LoadingDiagnostics } from './loading-diagnostics';
 import { PictureCache } from './picture-cache';
+import { EventSnapshotCache } from './event-snapshot';
+import type { CachedEvents, EventFileStamp } from './event-snapshot';
 
 export interface MutationResult<T> {
   value: T;
@@ -48,9 +50,12 @@ export class Archive {
   private busy = false;
 
   readonly pictureCache: PictureCache;
+  readonly eventCache: EventSnapshotCache;
+  readonly eventFileStamps = new Map<string, EventFileStamp>();
 
   constructor(readonly root: FileSystemDirectoryHandle) {
     this.pictureCache = new PictureCache(root, (name, thumbnail) => this.readPicture(name, thumbnail), this.diagnostics);
+    this.eventCache = new EventSnapshotCache(root);
   }
 
   get operating(): boolean { return this.busy; }
@@ -76,8 +81,8 @@ export class Archive {
     return this.readFile(await directory.getFileHandle(name), path);
   }
 
-  private async readFile(handle: FileSystemFileHandle, path: string, diagnose = false): Promise<string> {
-    const file = await (diagnose ? this.diagnostics.measure('Text getFile', () => handle.getFile()) : handle.getFile());
+  private async readFile(handle: FileSystemFileHandle, path: string, diagnose = false, snapshot?: File): Promise<string> {
+    const file = snapshot ?? await (diagnose ? this.diagnostics.measure('Text getFile', () => handle.getFile()) : handle.getFile());
     requireValue(file.size <= TEXT_LIMIT, `${path} exceeds 256 KB`, 'limit-exceeded');
     try {
       const bytes = await (diagnose ? this.diagnostics.measure('Text arrayBuffer', () => file.arrayBuffer()) : file.arrayBuffer());
@@ -271,7 +276,9 @@ export class Archive {
     });
   }
 
-  private async readArchive(onprogress?: (progress: ArchiveLoadProgress) => void): Promise<ArchiveSummary> {
+  private async readArchive(onprogress?: (progress: ArchiveLoadProgress) => void, onpartial?: (summary: ArchiveSummary) => void, cached?: CachedEvents): Promise<ArchiveSummary> {
+    const previous = new Map(cached?.summary.events.map(event => [event.filename, event]));
+    this.eventFileStamps.clear();
     const startedAt = performance.now();
     const progress: ArchiveLoadProgress = { phase: 'metadata', startedAt, elapsedMs: 0, enumerationMs: 0, readingMs: 0, entries: 0, total: 0, read: 0, unreadable: 0, slowestBatchMs: 0 };
     const report = () => onprogress?.({ ...progress, elapsedMs: performance.now() - startedAt });
@@ -308,9 +315,23 @@ export class Archive {
         const path = `moments/${name}`;
         try {
           requireValue(safeName(name), 'Invalid archive path');
-          const source = await this.readFile(handle, path, true);
+          const file = await this.diagnostics.measure('Text getFile', () => handle.getFile());
+          requireValue(file.size <= TEXT_LIMIT, `${path} exceeds 256 KB`, 'limit-exceeded');
+          const stamp = { size: file.size, modified: file.lastModified };
+          const old = previous.get(name);
+          const oldStamp = cached?.files.get(name);
+          if (old && oldStamp?.size === stamp.size && oldStamp.modified === stamp.modified) {
+            this.diagnostics.increment('Event files reused from snapshot');
+            this.eventFileStamps.set(name, stamp);
+            return { path, event: old };
+          }
+          const source = await this.readFile(handle, path, true, file);
           const parseStart = performance.now();
-          try { return { path, event: parseEvent(name, source) }; }
+          try {
+            const event = parseEvent(name, source);
+            this.eventFileStamps.set(name, stamp);
+            return { path, event };
+          }
           finally { this.diagnostics.record('Text parseEvent', performance.now() - parseStart); }
         }
         catch (error) { return { path, error: failure(error).message }; }
@@ -329,6 +350,9 @@ export class Archive {
           events.push(event);
         } catch (error) { unreadableEvents.push({ path: result.path, message: failure(error).message }); }
       }
+      onpartial?.({ manifest, tagsSource, labels,
+        events: [...events].sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? '') || b.created.localeCompare(a.created)),
+        unreadableEvents: [...unreadableEvents], warnings });
       progress.unreadable = unreadableEvents.length;
       progress.readingMs = performance.now() - readingStart;
       progress.slowestBatchMs = Math.max(progress.slowestBatchMs, performance.now() - batchStart);
@@ -340,7 +364,9 @@ export class Archive {
     return { manifest, tagsSource, labels, events, unreadableEvents, warnings };
   }
 
-  async load(onprogress?: (progress: ArchiveLoadProgress) => void): Promise<ArchiveSummary> { return this.exclusive(() => this.readArchive(onprogress)); }
+  async load(onprogress?: (progress: ArchiveLoadProgress) => void, onpartial?: (summary: ArchiveSummary) => void, cached?: CachedEvents): Promise<ArchiveSummary> {
+    return this.exclusive(() => this.readArchive(onprogress, onpartial, cached));
+  }
   async refresh(): Promise<ArchiveSummary> { return this.load(); }
 
   async createEvent(draft: EventDraft): Promise<MutationResult<ArchiveEvent>> {

@@ -34,6 +34,10 @@
     try { await session.workspace.createMissingThumbnails(); }
     catch (error) { session.notice = failure(error).message; }
   }
+  async function clearEvents() {
+    try { await session.workspace.clearEventCache(); session.notice = session.workspace.snapshotWarning || 'Event cache cleared. Archive files are unchanged.'; }
+    catch (error) { session.notice = failure(error).message; }
+  }
   async function clearPictures() {
     try { await session.workspace.clearPictureCache(); session.notice = session.workspace.pictureCacheWarning || 'Picture cache cleared. Archive files are unchanged.'; }
     catch (error) { session.notice = failure(error).message; }
@@ -65,6 +69,13 @@
       <Button disabled={!session.canWrite || session.draftCount > 0 || !!summary?.unreadableEvents.length || !!translation.error} aria-describedby="related-events-translation" onclick={translateRelatedEvents}>Convert related events to tags</Button>
     </section>
   {/if}
+  <section class="ui-section ui-stack">
+    <h2>Local event index</h2>
+    <p>This device keeps a disposable event snapshot in IndexedDB. Reopening shows it immediately while the folder is checked in background. A new device builds its own index and shows events as they load. Archive files and their format stay unchanged.</p>
+    <p class="ui-muted">Editing stays disabled until the folder check completes. Up to four archive snapshots are retained, at most 16 MiB each. Clearing the cache forces a rebuild on next opening.</p>
+    {#if session.workspace.snapshotSavedAt}<p class="ui-muted">Last snapshot: {new Date(session.workspace.snapshotSavedAt).toLocaleString()}</p>{/if}
+    <Button disabled={!!session.workspace.operation || pwa.activating} onclick={clearEvents}>Clear event cache</Button>
+  </section>
   <section class="ui-section ui-stack">
     <h2>Pictures</h2>
     <p>Create missing whole-image thumbnails beside originals in the archive. Originals and framing stay unchanged; existing thumbnails are skipped. Keep other tools closed. This can take time. After an abrupt close, remove any incomplete thumbnail before rerunning.</p>
