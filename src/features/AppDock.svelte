@@ -11,7 +11,6 @@
   const session = useSession();
   function navigate(event: MouseEvent) {
     if (!(event.target instanceof Element) || !event.target.closest('a')) return;
-    if (session.workspace.operation) { event.preventDefault(); return; }
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
     session.viewer = null;
   }
