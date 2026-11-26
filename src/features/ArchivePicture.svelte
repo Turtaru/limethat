@@ -41,11 +41,15 @@
       const show = (file: File) => {
         if (!current) return;
         if (!transferred) pendingImage = { diagnostics: archive.diagnostics, startedAt: performance.now(), thumbnail };
+        if (owned) URL.revokeObjectURL(owned);
         owned = URL.createObjectURL(file); url = owned;
         if (thumbnail) loadedThumbnails.set(host, file);
       };
       if (transferred) show(transferred);
-      else void session.workspace.readPicture(source, thumbnail).then(show)
+      else void session.workspace.cachedPicture(source, thumbnail).then(result => {
+        show(result.file);
+        if (result.refresh) void result.refresh.then(file => { if (file) show(file); });
+      })
         .catch(cause => { if (current) error = cause instanceof Error ? cause.message : 'Picture unavailable.'; });
     }
     return () => { current = false; pendingImage = null; loadedThumbnails.delete(host); if (owned) URL.revokeObjectURL(owned); };

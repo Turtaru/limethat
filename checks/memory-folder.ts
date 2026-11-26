@@ -41,6 +41,7 @@ export class MemoryFolder {
     const directory = parts.length === 2 ? await this.getDirectoryHandle(parts[0], { create: true }) : this;
     const file = await directory.getFileHandle(parts.at(-1)!, { create: true });
     file.data = new TextEncoder().encode(source);
+    file.lastModified++;
   }
 
   async text(path: string): Promise<string> {
@@ -54,8 +55,9 @@ export class MemoryFolder {
 class MemoryFile {
   readonly kind = 'file';
   data: Uint8Array<ArrayBuffer> = new Uint8Array();
+  lastModified = 1;
   constructor(readonly name: string, private readonly path: string, private readonly control: MemoryFolder['control']) {}
-  async getFile(): Promise<File> { return new File([this.data], this.name); }
+  async getFile(): Promise<File> { return new File([this.data], this.name, { lastModified: this.lastModified }); }
   async createWritable() {
     let pending = this.data;
     return {
@@ -64,6 +66,7 @@ class MemoryFile {
       },
       close: async () => {
         if (this.control.fail === this.path) throw new DOMException('Simulated write failure', 'NotAllowedError');
+        this.lastModified++;
         this.data = this.control.corrupt && this.path.includes(this.control.corrupt) ? new Uint8Array([0]) : pending;
         this.control.afterWrite?.(this.path);
       },

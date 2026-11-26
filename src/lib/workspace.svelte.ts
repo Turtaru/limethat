@@ -1,10 +1,11 @@
 import { Archive } from './archive';
-import type { ArchiveLoadProgress, LabelDraft, MutationResult } from './archive';
+import type { ArchiveLoadProgress, LabelDraft, MutationResult, ThumbnailProgress } from './archive';
 import type { ArchiveEvent, ArchiveSummary, EventDraft } from './archive-format';
 import { ArchiveFailure, failure, permissionRequired } from './errors';
 import { chooseFolder, folderCapability, folderPermission, forgetFolder, rememberFolder, requestFolderPermission, restoreFolder } from './folder-access';
 import type { PictureStage } from './pictures';
 import type { LoadingDiagnostics } from './loading-diagnostics';
+import { clearPictureCache } from './picture-cache';
 
 export type WorkspaceState = 'unsupported' | 'no-folder' | 'permission-required' | 'loading' | 'ready' | 'error';
 export type MutationOutcome<T> =
@@ -25,6 +26,8 @@ export class Workspace {
   persistenceWarning = $state<string | null>(null);
   loadProgress = $state.raw<ArchiveLoadProgress | null>(null);
   diagnostics = $state.raw<LoadingDiagnostics | null>(null);
+  thumbnailProgress = $state.raw<ThumbnailProgress | null>(null);
+  pictureCacheWarning = $state('');
   private pending: { handle: FileSystemDirectoryHandle; create: boolean } | null = null;
 
   private start(operation: string): void {
@@ -55,6 +58,8 @@ export class Workspace {
     this.state = 'loading';
     const candidate = new Archive(handle);
     this.diagnostics = candidate.diagnostics;
+    this.thumbnailProgress = null;
+    this.pictureCacheWarning = '';
     const setup = create ? await candidate.initialize() : null;
     const translationRecovery = await candidate.hasTranslationRecovery();
     let summary: ArchiveSummary | null;
@@ -126,6 +131,8 @@ export class Workspace {
       await forgetFolder();
       this.archive = null;
       this.diagnostics = null;
+      this.thumbnailProgress = null;
+      this.pictureCacheWarning = '';
       this.summary = null;
       this.translationRecovery = false;
       this.pending = null;
@@ -189,6 +196,41 @@ export class Workspace {
   importPicture(file: Blob) {
     return this.mutate('decoding', archive => archive.importPicture(file, (stage: PictureStage) => { this.operation = stage; }));
   }
+  async createMissingThumbnails(): Promise<void> {
+    if (this.state !== 'ready' || this.translationRecovery || this.pending) throw new ArchiveFailure('unavailable', 'Reconnect the archive before creating thumbnails.');
+    this.start('creating thumbnails');
+    this.thumbnailProgress = null;
+    try {
+      if (!this.archive) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
+      await this.archive.createMissingThumbnails(progress => { this.thumbnailProgress = progress; });
+    } catch (error) { this.failed(error); }
+    finally { this.operation = null; }
+  }
+
+  async clearPictureCache(): Promise<void> {
+    this.start('clearing picture cache');
+    try { await clearPictureCache(); this.pictureCacheWarning = ''; }
+    catch { this.pictureCacheWarning = 'Could not clear the picture cache. Try closing other tabs and retrying.'; }
+    finally { this.operation = null; }
+  }
+
+  async cachedPicture(name: string, thumbnail = true) {
+    const archive = this.archive;
+    if (!archive) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
+    try {
+      const result = await archive.pictureCache.load(name, thumbnail);
+      if (this.archive === archive && archive.pictureCache.warning) this.pictureCacheWarning = archive.pictureCache.warning;
+      if (result.refresh) result.refresh = result.refresh.then(file => {
+        if (this.archive === archive && archive.pictureCache.warning) this.pictureCacheWarning = archive.pictureCache.warning;
+        return file;
+      }).catch(() => {
+        if (this.archive === archive) this.pictureCacheWarning = 'A cached picture could not be checked against the folder. Reconnect or refresh the archive; the cached view may be outdated.';
+        return null;
+      });
+      return result;
+    } catch (error) { throw permissionRequired(error) ? this.failed(error) : failure(error); }
+  }
+
   async readPicture(name: string, thumbnail = true): Promise<File> {
     if (!this.archive) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
     try { return await this.archive.readPicture(name, thumbnail); }

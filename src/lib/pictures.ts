@@ -2,6 +2,26 @@ import { PICTURE_LIMIT } from './archive-format';
 export { defaultFrame, pictureBounds, resizedFrame, zoomFrame } from './images/image-frame';
 import { ArchiveFailure, requireValue } from './errors';
 
+export async function createThumbnail(file: Blob): Promise<Blob> {
+  requireValue(file.size > 0 && file.size <= PICTURE_LIMIT, 'Picture must be nonempty and at most 25 MB', 'limit-exceeded');
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const canvas = document.createElement('canvas');
+  try {
+    requireValue(bitmap.width > 0 && bitmap.height > 0, 'Image has no pixels');
+    const ratio = Math.min(1, 1080 / bitmap.width, 2048 / Math.max(bitmap.width, bitmap.height));
+    canvas.width = Math.max(1, Math.floor(bitmap.width * ratio));
+    canvas.height = Math.max(1, Math.floor(bitmap.height * ratio));
+    const drawing = context(canvas);
+    drawing.fillStyle = 'white';
+    drawing.fillRect(0, 0, canvas.width, canvas.height);
+    drawing.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return await jpeg(canvas, 0.8);
+  } finally {
+    bitmap.close();
+    canvas.width = canvas.height = 0;
+  }
+}
+
 export type PictureStage = 'decoding' | 'encoding-image' | 'encoding-thumbnail' | 'writing';
 export type ProcessedPicture = { image: Blob; thumbnail: Blob };
 

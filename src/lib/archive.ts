@@ -3,11 +3,12 @@ import {
   isObject, json, parseLabels, parseManifest, safeName, serialize, updateMetadata, validateFrame, validateText,
 } from './archive-format';
 import type { ArchiveEvent, ArchiveSummary, EventDraft, Label, PictureFrame } from './archive-format';
-import { ArchiveFailure, failure, requireValue } from './errors';
-import { processPicture } from './pictures';
+import { ArchiveFailure, failure, permissionRequired, requireValue } from './errors';
+import { createThumbnail, processPicture } from './pictures';
 import { needsRelatedEventsTranslation, relatedEventGroups } from './related-events';
 import type { PictureStage } from './pictures';
 import { LoadingDiagnostics } from './loading-diagnostics';
+import { PictureCache } from './picture-cache';
 
 export interface MutationResult<T> {
   value: T;
@@ -26,6 +27,13 @@ export interface ArchiveLoadProgress {
   unreadable: number;
   slowestBatchMs: number;
 }
+export interface ThumbnailProgress {
+  total: number;
+  processed: number;
+  created: number;
+  skipped: number;
+  failures: { path: string; message: string }[];
+}
 export interface LabelDraft { title: string; picture?: string; picture_frame?: PictureFrame }
 interface TextChange { path: string; source: string | null; next: string | null }
 
@@ -39,7 +47,11 @@ export class Archive {
   readonly diagnostics = new LoadingDiagnostics();
   private busy = false;
 
-  constructor(readonly root: FileSystemDirectoryHandle) {}
+  readonly pictureCache: PictureCache;
+
+  constructor(readonly root: FileSystemDirectoryHandle) {
+    this.pictureCache = new PictureCache(root, (name, thumbnail) => this.readPicture(name, thumbnail), this.diagnostics);
+  }
 
   get operating(): boolean { return this.busy; }
 
@@ -472,6 +484,52 @@ export class Archive {
       this.diagnostics.record(usedThumbnail ? 'Thumbnail size' : 'Original picture size', file.size, 'bytes');
       return file;
     } catch (error) { throw failure(error); }
+  }
+
+  async createMissingThumbnails(onprogress: (progress: ThumbnailProgress) => void): Promise<void> {
+    return this.exclusive(async () => {
+      await this.validateArchive();
+      const directory = await this.root.getDirectoryHandle('attachments');
+      const originals: FileSystemFileHandle[] = [];
+      const names = new Set<string>();
+      for await (const entry of directory.values()) {
+        names.add(entry.name);
+        if (entry.kind === 'file' && safeName(entry.name) && /\.(jpe?g|png|webp|avif|gif|bmp|heic)$/i.test(entry.name) && !entry.name.endsWith('.thumb.jpg')) originals.push(entry);
+      }
+      const progress: ThumbnailProgress = { total: originals.length, processed: 0, created: 0, skipped: 0, failures: [] };
+      const report = () => onprogress({ ...progress, failures: [...progress.failures] });
+      report();
+      for (const original of originals) {
+        const target = `${original.name}.thumb.jpg`;
+        const path = `attachments/${target}`;
+        if (names.has(target)) {
+          progress.skipped++;
+        } else {
+          let attempted = false;
+          try {
+            const source = await original.getFile();
+            const thumbnail = await createThumbnail(source);
+            const current = await original.getFile();
+            requireValue(current.size === source.size && current.lastModified === source.lastModified, 'Original picture changed during thumbnail creation.', 'conflict');
+            await this.assertMissing(path);
+            attempted = true;
+            await this.write(path, thumbnail);
+            progress.created++;
+            this.pictureCache.invalidate();
+          } catch (error) {
+            let message = failure(error).message;
+            if (attempted) {
+              try { await directory.removeEntry(target); }
+              catch { message += ' An incomplete thumbnail may remain; remove it before retrying.'; }
+            }
+            progress.failures.push({ path, message });
+            if (permissionRequired(error)) { progress.processed++; report(); throw error; }
+          }
+        }
+        progress.processed++;
+        report();
+      }
+    });
   }
 
   async importPicture(file: Blob, progress?: (stage: PictureStage) => void): Promise<MutationResult<string>> {

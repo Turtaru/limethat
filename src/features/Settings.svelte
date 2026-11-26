@@ -29,6 +29,15 @@
       if (session.workspace.state === 'ready') session.notice = 'Migration rolled back. You can retry.';
     } catch (error) { session.notice = failure(error).message; }
   }
+  async function createThumbnails() {
+    if (!session.canWrite || session.draftCount) return;
+    try { await session.workspace.createMissingThumbnails(); }
+    catch (error) { session.notice = failure(error).message; }
+  }
+  async function clearPictures() {
+    try { await session.workspace.clearPictureCache(); session.notice = session.workspace.pictureCacheWarning || 'Picture cache cleared. Archive files are unchanged.'; }
+    catch (error) { session.notice = failure(error).message; }
+  }
   function themeChanged() {
     try { localStorage.setItem('limethat-theme', session.theme); }
     catch { session.notice = 'Theme changed, but this browser could not remember the preference.'; }
@@ -56,6 +65,21 @@
       <Button disabled={!session.canWrite || session.draftCount > 0 || !!summary?.unreadableEvents.length || !!translation.error} aria-describedby="related-events-translation" onclick={translateRelatedEvents}>Convert related events to tags</Button>
     </section>
   {/if}
+  <section class="ui-section ui-stack">
+    <h2>Pictures</h2>
+    <p>Create missing whole-image thumbnails beside originals in the archive. Originals and framing stay unchanged; existing thumbnails are skipped. Keep other tools closed. This can take time. After an abrupt close, remove any incomplete thumbnail before rerunning.</p>
+    <Button disabled={!session.canWrite || session.draftCount > 0} onclick={createThumbnails}>Create missing thumbnails</Button>
+    {#if session.workspace.operation === 'creating thumbnails' && !session.workspace.thumbnailProgress}<p role="status">Listing attachment files…</p>{/if}
+    {#if session.workspace.thumbnailProgress}
+      {@const progress = session.workspace.thumbnailProgress}
+      <p role="status">Processed {progress.processed}/{progress.total}: {progress.created} created, {progress.skipped} skipped, {progress.failures.length} failed.</p>
+      <progress aria-label="Pictures processed" max={Math.max(1, progress.total)} value={progress.processed}></progress>
+      {#if progress.failures.length}<ul class="ui-error">{#each progress.failures as item}<li><code>{item.path}</code>: {item.message}</li>{/each}</ul>{/if}
+    {/if}
+    <p class="ui-muted">Pictures use a disposable browser cache, limited to 64 MiB across archives. Cached pictures show immediately; when shown again, they are checked against the folder in background, at most once every 30 seconds. Clearing it never changes archive files.</p>
+    <Button disabled={!!session.workspace.operation || pwa.activating} onclick={clearPictures}>Clear picture cache</Button>
+    {#if session.workspace.pictureCacheWarning}<p class="ui-error" role="status">{session.workspace.pictureCacheWarning}</p>{/if}
+  </section>
   <section class="ui-section"><Field label="Color theme">{#snippet children(control)}<select class="ui-input" id={control.id} bind:value={session.theme} onchange={themeChanged}><option value="dark">Dark</option><option value="light">Light</option></select>{/snippet}</Field></section>
   <section class="ui-section ui-stack"><h2>App version</h2><p class="ui-muted">Build: {build}</p></section>
   <section class="ui-section ui-stack"><h2>Loading diagnostics</h2><LoadingDiagnostics /></section>
