@@ -31,6 +31,7 @@
   <div class="ui-stack">
     <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href={session.navigation.origin(`#/events/${encodeURIComponent(params.id)}`, '#/events')} data-restore-event-list>← Back</a>{#if event}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { confirmDelete = true; error = ''; }}>Delete</Button>{/if}</div>
     {#if event}
+      {#if session.eventSaving(event.id)}<p class="ui-status" role="status">Saving changes affecting this event. Editing is temporarily unavailable.</p>{/if}
       <div class="ui-detail-layout">
         <div class="ui-stack ui-detail-media">
           {#each photoNames(event.body) as name, index (name)}

@@ -74,7 +74,7 @@
     <p>This device keeps a disposable event snapshot in IndexedDB. Reopening shows it immediately while the folder is checked in background. A new device builds its own index and shows events as they load. Archive files and their format stay unchanged.</p>
     <p class="ui-muted">Editing stays disabled until the folder check completes. Up to four archive snapshots are retained, at most 16 MiB each. Clearing the cache forces a rebuild on next opening.</p>
     {#if session.workspace.snapshotSavedAt}<p class="ui-muted">Last snapshot: {new Date(session.workspace.snapshotSavedAt).toLocaleString()}</p>{/if}
-    <Button disabled={!!session.workspace.operation || pwa.activating} onclick={clearEvents}>Clear event cache</Button>
+    <Button disabled={!!session.workspace.operation || session.pendingSaves.size > 0 || pwa.activating} onclick={clearEvents}>Clear event cache</Button>
   </section>
   <section class="ui-section ui-stack">
     <h2>Pictures</h2>
@@ -88,7 +88,7 @@
       {#if progress.failures.length}<ul class="ui-error">{#each progress.failures as item}<li><code>{item.path}</code>: {item.message}</li>{/each}</ul>{/if}
     {/if}
     <p class="ui-muted">Pictures use a disposable browser cache, limited to 64 MiB across archives. Cached pictures show immediately; when shown again, they are checked against the folder in background, at most once every 30 seconds. Clearing it never changes archive files.</p>
-    <Button disabled={!!session.workspace.operation || pwa.activating} onclick={clearPictures}>Clear picture cache</Button>
+    <Button disabled={!!session.workspace.operation || session.pendingSaves.size > 0 || pwa.activating} onclick={clearPictures}>Clear picture cache</Button>
     {#if session.workspace.pictureCacheWarning}<p class="ui-error" role="status">{session.workspace.pictureCacheWarning}</p>{/if}
   </section>
   <section class="ui-section"><Field label="Color theme">{#snippet children(control)}<select class="ui-input" id={control.id} bind:value={session.theme} onchange={themeChanged}><option value="dark">Dark</option><option value="light">Light</option></select>{/snippet}</Field></section>

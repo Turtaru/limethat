@@ -6,8 +6,8 @@ import type { MutationOutcome } from '../lib/workspace.svelte';
 import type { ArchiveEvent, Label, PictureFrame } from '../lib/archive-format';
 import { ArchiveFailure } from '../lib/errors';
 import { pwa } from './pwa.svelte';
-import { editorInitial, eventHref, labelHref } from './models';
-import { labelKey } from '../lib/archive-format';
+import { editorInitial, eventDraft, eventHref, labelHref } from './models';
+import { labelKey, updateMetadata, validateDate } from '../lib/archive-format';
 import type { EventDraft, LabelEditorDraft } from '../lib/ui-kit/types';
 import { containedFrame } from '../lib/images/image-frame';
 import { processPicture } from '../lib/pictures';
@@ -25,10 +25,97 @@ export class Session {
   draftCount = $state(0);
   readonly eventDrafts = new Map<string, EventPageDraft>();
   readonly labelDrafts = new Map<string, LabelPageDraft>();
+  readonly pendingSaves = new SvelteMap<string, { title: string; eventIds: string[]; labelId?: string; rewritesEvents?: boolean }>();
+  readonly saveErrors = new SvelteMap<string, string>();
+  private saveTail: Promise<void> = Promise.resolve();
+  private eventRebases = new Map<string, ArchiveEvent>();
   viewer = $state<{ name: string; alt: string; section?: 'events' | 'labels' } | null>(null);
-  get canWrite() { return this.workspace.state === 'ready' && !this.workspace.snapshotStatus && !this.workspace.translationRecovery && !this.workspace.operation && !this.reviewRequired && !pwa.activating; }
-  editEvent(event: ArchiveEvent | null) { void push(event ? `${eventHref(event.id)}/edit` : '/events/new'); }
-  editLabel(label: Label | null) { void push(label ? `${labelHref(labelKey(label.id))}/edit` : '/labels/new'); }
+  get canEdit() { return this.workspace.state === 'ready' && !this.workspace.snapshotStatus && !this.workspace.translationRecovery && (!this.workspace.operation || this.pendingSaves.size > 0) && !this.reviewRequired && !pwa.activating; }
+  get canWrite() { return this.canEdit && !this.workspace.operation && !this.pendingSaves.size; }
+  eventSaving(id: string) {
+    const event = this.workspace.summary?.events.find(event => event.id.toLowerCase() === id.toLowerCase());
+    return [...this.pendingSaves.values()].some(save => save.eventIds.includes(id.toLowerCase()) || (save.rewritesEvents && event?.tags.some(tag => tag.id === save.labelId)));
+  }
+  labelSaving(id: string) { return [...this.pendingSaves.values()].some(save => save.labelId === id); }
+  editEvent(event: ArchiveEvent | null) { if (this.canEdit && (!event || !this.eventSaving(event.id))) void push(event ? `${eventHref(event.id)}/edit` : '/events/new'); }
+  editLabel(label: Label | null) { if (this.canEdit && (!label || !this.labelSaving(labelKey(label.id)))) void push(label ? `${labelHref(labelKey(label.id))}/edit` : '/labels/new'); }
+
+  /** Owns in-memory save jobs across route changes; one job includes its picture imports and verified record write. */
+  private enqueueSave(key: string, page: EventPageDraft | LabelPageDraft, pending: { title: string; eventIds: string[]; labelId?: string; rewritesEvents?: boolean }, save: () => Promise<void>) {
+    this.saveErrors.delete(key);
+    this.pendingSaves.set(key, pending);
+    this.saveTail = this.saveTail.then(async () => {
+      let started = false;
+      try {
+        if (!this.canEdit || page.blocked) throw new Error('Reconnect or refresh before saving.');
+        started = true;
+        await save();
+        this.discardDraft(key);
+      } catch (cause) {
+        if (started && this.reviewRequired) page.blocked = true;
+        this.saveErrors.set(key, cause instanceof Error ? cause.message : 'Could not save changes.');
+      } finally { this.pendingSaves.delete(key); }
+    });
+  }
+
+  saveEvent(key: string, page: EventPageDraft, value: EventDraft) {
+    if (!this.canEdit || page.blocked || this.pendingSaves.has(key) || (page.original && this.eventSaving(page.original.id))) throw new Error('Reconnect or wait for this event to finish saving.');
+    const fieldErrors: Record<string, string> = {};
+    for (const [field, date] of [['date', value.date], ['endDate', value.endDate]]) {
+      try {
+        if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Incomplete date');
+        validateDate(date || null);
+      } catch { fieldErrors[field] = 'Enter a valid YYYY-MM-DD date.'; }
+    }
+    if (Object.keys(fieldErrors).length) throw Object.assign(new Error('Check the date fields.'), { fieldErrors });
+    const draft = { ...value, labelIds: [...value.labelIds], pictures: [...value.pictures], removedPictureIds: [...value.removedPictureIds] };
+    const frames = $state.snapshot(page.frames);
+    const pictureFrames = draft.pictures.map(file => ({ ...page.pictures.frame(file) }));
+    this.enqueueSave(key, page, { title: `Event: ${draft.title}`, eventIds: page.original ? [page.original.id.toLowerCase()] : [] }, async () => {
+      const imported: string[] = [];
+      for (const file of draft.pictures) imported.push(await page.pictures.import(file));
+      const summary = this.workspace.summary!;
+      // Rebase only our label rewrites; external changes must still fail the archive's source comparison.
+      const original = page.original ? this.eventRebases.get(page.original.source) ?? page.original : null;
+      if (original && !summary.events.some(event => event.id.toLowerCase() === original!.id.toLowerCase())) throw new Error('Event no longer exists. Refresh before saving.');
+      const complete = eventDraft(draft, original ?? null, summary, imported);
+      complete.frames = frames;
+      imported.forEach((name, index) => { complete.frames![name] = pictureFrames[index]; });
+      this.result(await (original ? this.workspace.updateEvent(original, complete) : this.workspace.createEvent(complete)));
+    });
+  }
+
+  saveLabel(key: string, page: LabelPageDraft, value: LabelEditorDraft) {
+    const id = page.original ? labelKey(page.original.id) : undefined;
+    if (!this.canEdit || page.blocked || this.pendingSaves.has(key) || (id !== undefined && this.labelSaving(id))) throw new Error('Reconnect or wait for this label to finish saving.');
+    const draft = { ...value };
+    const frame = page.frame ? { ...page.frame } : undefined;
+    const pictureFrame = draft.picture ? { ...page.pictures.frame(draft.picture) } : undefined;
+    const eventIds = id !== undefined && draft.name !== page.original!.title
+      ? this.workspace.summary!.events.filter(event => event.tags.some(tag => tag.id === id)).map(event => event.id.toLowerCase()) : [];
+    this.enqueueSave(key, page, { title: `Label: ${draft.name}`, eventIds, labelId: id, rewritesEvents: id !== undefined && draft.name !== page.original!.title }, async () => {
+      const imported = draft.picture ? await page.pictures.import(draft.picture) : null;
+      const original = id === undefined ? null : this.workspace.summary!.labels.find(label => labelKey(label.id) === id);
+      if (id !== undefined && !original) throw new Error('Label no longer exists. Refresh before saving.');
+      const picture = imported ? `attachments/${imported}` : draft.removePicture ? undefined : original?.picture;
+      const complete = { title: draft.name, picture, picture_frame: imported ? pictureFrame : draft.removePicture ? undefined : frame };
+      const before = this.workspace.summary!;
+      const outcome = await (id !== undefined ? this.workspace.updateLabel(id, complete) : this.workspace.createLabel(complete));
+      this.result(outcome);
+      if (id !== undefined && original?.title !== draft.name && outcome.status === 'saved' && outcome.refresh === 'ready') {
+        for (const event of before.events.filter(event => event.tags.some(tag => tag.id === id))) {
+          const updated = this.workspace.summary!.events.find(item => item.id === event.id);
+          const tags = event.tags.map(tag => tag.id === id ? { ...tag, title: draft.name.trim() } : tag);
+          if (updated && updated.source !== event.source && updated.source === updateMetadata(event, { tags })) {
+            for (const [source, previous] of this.eventRebases) {
+              if (previous.source === event.source) this.eventRebases.set(source, updated);
+            }
+            this.eventRebases.set(event.source, updated);
+          }
+        }
+      }
+    });
+  }
 
   eventDraft(key: string, original: ArchiveEvent | null): EventPageDraft {
     let draft = this.eventDrafts.get(key);
@@ -51,6 +138,7 @@ export class Session {
   }
 
   discardDraft(key: string) {
+    this.saveErrors.delete(key);
     this.eventDrafts.delete(key);
     this.labelDrafts.delete(key);
     this.draftCount = this.eventDrafts.size + this.labelDrafts.size;
@@ -73,12 +161,14 @@ export class Session {
     await this.workspace.disconnect();
     if (!this.workspace.archive && this.workspace.state === 'no-folder') {
       this.reviewRequired = false;
+      this.eventRebases.clear();
       this.viewer = null;
       this.notice = 'Archive closed.';
     }
   }
 
   async refresh() {
+    if (this.pendingSaves.size) { this.notice = 'Wait for pending saves before refreshing the archive.'; return; }
     await this.workspace.refresh();
     if (this.workspace.state === 'ready') {
       this.reviewRequired = false;

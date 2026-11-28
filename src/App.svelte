@@ -258,10 +258,19 @@
 {:else}
   <AppShell>
     {#snippet footer()}
-      {#if !editorRoute}<AppDock {section} showScrollTop label={section === 'settings' ? 'Refresh archive' : `${(section === 'labels' ? currentLabel : currentEvent) ? 'Edit' : 'Create'} ${section === 'labels' ? 'label' : 'event'}`} icon={section === 'settings' ? 'reset' : (section === 'labels' ? currentLabel : currentEvent) ? 'edit' : 'create'} disabled={section === 'settings' ? !!session.workspace.operation || !session.workspace.capability.supported : !session.canWrite} onclick={dockAction} />{/if}
+      {#if !editorRoute}<AppDock {section} showScrollTop label={section === 'settings' ? 'Refresh archive' : `${(section === 'labels' ? currentLabel : currentEvent) ? 'Edit' : 'Create'} ${section === 'labels' ? 'label' : 'event'}`} icon={section === 'settings' ? 'reset' : (section === 'labels' ? currentLabel : currentEvent) ? 'edit' : 'create'} disabled={section === 'settings' ? !!session.workspace.operation || session.pendingSaves.size > 0 || !session.workspace.capability.supported : !session.canEdit || (section === 'labels' ? !!currentLabel && session.labelSaving(labelKey(currentLabel.id)) : !!currentEvent && session.eventSaving(currentEvent.id))} onclick={dockAction} />{/if}
     {/snippet}
     <div class="ui-stack">
       {#if session.notice}<p class={session.workspace.state === 'ready' ? 'ui-sr-only' : 'ui-status'} role="status">{session.notice}</p>{/if}
+      {#if session.pendingSaves.size}
+        <section class="ui-status" aria-label="Pending saves">
+          <p role="status">Saving {session.pendingSaves.size} {session.pendingSaves.size === 1 ? 'change' : 'changes'} in background. You can keep using the app; keep this tab open.</p>
+          <ul>{#each [...session.pendingSaves] as [key, save] (key)}<li>{save.title} — saving…</li>{/each}</ul>
+        </section>
+      {/if}
+      {#each [...session.saveErrors] as [key, error] (key)}
+        <div class="ui-error" role="alert"><p>Save failed: {error}</p><a href={`#${key}`}>Return to the preserved draft</a></div>
+      {/each}
       {#if !session.workspace.translationRecovery && router.location !== '/settings' && (session.workspace.state !== 'ready' || session.reviewRequired || session.workspace.persistenceWarning || session.workspace.snapshotWarning)}<Connection />{/if}
       {#if session.workspace.snapshotStatus}
         <p class="ui-status" role="status">{session.workspace.snapshotStatus === 'cached' ? 'Showing cached events; checking the archive folder.' : 'Building this device’s event index; the list is incomplete.'} {session.workspace.loadProgress ? `${session.workspace.loadProgress.read}/${session.workspace.loadProgress.total} event files checked.` : ''} Editing stays disabled until verification finishes.</p>

@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Button from './Button.svelte';
-  import Dialog from './Dialog.svelte';
   let { title, saving = false, oncancel, children, footer }: {
     title: string; saving?: boolean; oncancel: () => void; children: Snippet; footer?: Snippet;
   } = $props();
@@ -13,8 +12,5 @@
   {#if footer}{@render footer()}{/if}
 </section>
 {#if saving}
-  <Dialog open dismissible={false} title="Saving changes…">
-    <p>Keep this page open while the archive is updated.</p>
-    <progress aria-label="Saving changes"></progress>
-  </Dialog>
+  <p class="ui-status" role="status">Saving changes… You can keep using the app.</p>
 {/if}

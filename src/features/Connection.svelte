@@ -6,7 +6,7 @@
   let { compact = false, welcome = false }: { compact?: boolean; welcome?: boolean } = $props();
   const session = useSession();
   const workspace = session.workspace;
-  const busy = $derived(!!workspace.operation || pwa.activating);
+  const busy = $derived(!!workspace.operation || session.pendingSaves.size > 0 || pwa.activating);
   const drafting = $derived(session.draftCount > 0);
   const build = __APP_BUILD__;
   let showDetails = $state(false);
