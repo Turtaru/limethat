@@ -28,7 +28,7 @@
 </script>
 {#if params.id}
   <div class="ui-stack">
-    <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href={session.navigation.origin(`#/labels/${encodeURIComponent(params.id)}`, '#/labels')} data-restore-label-list>← All labels</a>{#if label}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { error = ''; confirmDelete = true; }}>Delete</Button>{/if}</div>
+    <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href={session.navigation.origin(`#/labels/${encodeURIComponent(params.id)}`, '#/labels')} data-restore-label-list>← Back</a>{#if label}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { error = ''; confirmDelete = true; }}>Delete</Button>{/if}</div>
     {#if label}
       {@const name = pictureName(label.picture)}
       {@const selected = eventPhotoTransition.kind === 'label' && eventPhotoTransition.eventId === labelKey(label.id)}

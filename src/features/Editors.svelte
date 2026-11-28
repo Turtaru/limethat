@@ -127,6 +127,6 @@
     {#snippet recovery()}{#if page.blocked}<p class="ui-error">This change may already be partially saved. Inspect the archive, then cancel this draft and reopen the current label. Do not repeat the save.</p>{/if}<Connection compact />{/snippet}
   </LabelEditor>
 {:else if missing}
-  <div class="ui-stack"><PageHeading title={section === 'events' ? 'Event not found' : 'Label not found'} /><a class="ui-button" href={`#/${section}`}>Back to {section}</a></div>
+  <div class="ui-stack"><PageHeading title={section === 'events' ? 'Event not found' : 'Label not found'} /><a class="ui-button" href={`#/${section}`}>Back</a></div>
 {:else}<p class="ui-muted">Connect an archive to open this editor.</p>{/if}
 {#if !eventPage && !labelPage}<AppDock {section} label={section === 'events' ? 'Save event' : 'Save label'} icon="save" disabled />{/if}

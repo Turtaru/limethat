@@ -29,7 +29,7 @@
 
 {#if params.id}
   <div class="ui-stack">
-    <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href={session.navigation.origin(`#/events/${encodeURIComponent(params.id)}`, '#/events')} data-restore-event-list>← All events</a>{#if event}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { confirmDelete = true; error = ''; }}>Delete</Button>{/if}</div>
+    <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href={session.navigation.origin(`#/events/${encodeURIComponent(params.id)}`, '#/events')} data-restore-event-list>← Back</a>{#if event}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { confirmDelete = true; error = ''; }}>Delete</Button>{/if}</div>
     {#if event}
       <div class="ui-detail-layout">
         <div class="ui-stack ui-detail-media">
