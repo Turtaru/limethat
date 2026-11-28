@@ -1,7 +1,6 @@
 <script lang="ts">
   import { replace } from 'svelte-spa-router';
   import { Button, Dialog, PageHeading } from '../lib/ui-kit';
-  import { labelListNavigation } from './event-list-navigation.svelte';
   import { eventPhotoTransition } from './event-photo-transition.svelte';
   import { labelKey } from '../lib/archive-format';
   import { useSession } from './session.svelte';
@@ -29,7 +28,7 @@
 </script>
 {#if params.id}
   <div class="ui-stack">
-    <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href={labelListNavigation.position?.url ?? '#/labels'} data-restore-label-list>← All labels</a>{#if label}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { error = ''; confirmDelete = true; }}>Delete</Button>{/if}</div>
+    <div class="ui-detail-toolbar"><a class="ui-button ui-button--quiet" href={session.navigation.origin(`#/labels/${encodeURIComponent(params.id)}`, '#/labels')} data-restore-label-list>← All labels</a>{#if label}<Button variant="quiet" class="ui-delete-action" disabled={!session.canWrite} onclick={() => { error = ''; confirmDelete = true; }}>Delete</Button>{/if}</div>
     {#if label}
       {@const name = pictureName(label.picture)}
       {@const selected = eventPhotoTransition.kind === 'label' && eventPhotoTransition.eventId === labelKey(label.id)}

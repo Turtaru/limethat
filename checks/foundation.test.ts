@@ -61,6 +61,16 @@ test('load and refresh reuse enumerated event handles without per-event lookups'
   assert.equal(fileLookups, 0);
 });
 
+test('archive refresh invalidates mounted pictures even if their filenames stay unchanged', async () => {
+  const { archive } = await fixture();
+  let invalidations = 0;
+  archive.pictureCache.subscribe('photo.jpg', () => invalidations++);
+  await archive.load();
+  assert.equal(invalidations, 0);
+  await archive.refresh();
+  assert.equal(invalidations, 1);
+});
+
 test('loading progress counts event attempts separately from folder entries and unreadable files', async () => {
   const { root, archive } = await fixture();
   await root.put('moments/broken.md', 'not an event');

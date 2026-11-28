@@ -7,9 +7,7 @@
   import EventList from './features/EventList.svelte';
   import LabelList from './features/LabelList.svelte';
   import { labelHref } from './features/models';
-  import { eventListNavigation, labelListNavigation, type EventListPosition } from './features/event-list-navigation.svelte';
   import { captureListPosition, listSelector, restoreListPosition } from './features/list-position';
-  const listPositions = new Map<string, EventListPosition>();
   import { eventPhotoTransition, loadedThumbnails } from './features/event-photo-transition.svelte';
   import Labels from './features/Labels.svelte';
   import Settings from './features/Settings.svelte';
@@ -66,7 +64,7 @@
         ]);
         if (!loaded) transition.skipTransition();
         if (returning && loaded) {
-          const position = history.state?.[kind === 'label' ? 'limethatLabelList' : 'limethatEventList'] as EventListPosition | undefined;
+          const position = session.navigation.position(window.location.hash || '#/');
           if (position?.url === (window.location.hash || '#/')) restoreListPosition(position);
           const item = document.getElementById(`${kind}-${eventId}`);
           const destinationTitle = item?.querySelector<HTMLElement>(kind === 'label' ? '.ui-label-row__title' : '.ui-event-card__title');
@@ -97,8 +95,7 @@
   }
   function returnToList(href: string, update: () => void | Promise<unknown>): boolean {
     const kind = router.location.startsWith('/labels/') ? 'label' : 'event';
-    const position = pendingListPosition ?? history.state?.[kind === 'label' ? 'limethatLabelList' : 'limethatEventList']
-      ?? (kind === 'label' ? labelListNavigation.position : eventListNavigation.position);
+    const position = session.navigation.position(href);
     const id = kind === 'label' ? currentLabel && labelKey(currentLabel.id) : currentEvent?.id;
     const picture = document.querySelector<HTMLElement>('main .ui-detail-media .ui-archive-picture');
     const source = canAnimatePicture(picture) ? picture : null;
@@ -106,7 +103,6 @@
     const listHref = kind === 'label' ? /^#\/labels(?:\?|$)/ : /^#\/(?:events)?(?:\?|$)/;
     if (!listHref.test(href) || !id || editorRoute || !position || position.url !== href
       || !document.getElementById(`${kind}-${id}`) || (!source && !canAnimateElement(title))) return false;
-    pendingListPosition = position;
     animateEvent(source, id, update, true, kind);
     return true;
   }
@@ -159,12 +155,9 @@
       if (scrollFrame) return;
       scrollFrame = requestAnimationFrame(() => {
         scrollFrame = 0;
-        if (activeEventTransition || renderedUrl !== (window.location.hash || '#/')) return;
+        if (activeEventTransition || session.viewer || renderedUrl?.split('?')[0] !== (window.location.hash || '#/').split('?')[0]) return;
         const selector = listSelector(router.location);
-        if (!selector) return;
-        const position = captureListPosition(selector);
-        listPositions.set(position.url, position);
-        history.replaceState({ ...history.state, limethatListPosition: position }, '');
+        session.navigation.remember(selector ? captureListPosition(selector) : { url: window.location.hash || '#/', y: window.scrollY });
       });
     };
     window.addEventListener('scroll', saveScroll, { passive: true });
@@ -175,27 +168,11 @@
       event.preventDefault();
       const dockNavigation = !!anchor.closest('.ui-dock .ui-navigation');
       if (dockNavigation && ((href === '#/events' && eventListRoute) || (href === '#/labels' && router.location === '/labels') || (href === '#/settings' && router.location === '/settings'))) return;
+      const from = window.location.hash || '#/';
       const selector = listSelector(router.location);
-      if (selector) {
-        const position = captureListPosition(selector, href, anchor);
-        listPositions.set(position.url, position);
-        const navigation = router.location === '/labels' ? labelListNavigation : eventListNavigation;
-        navigation.position = position;
-        history.replaceState({ ...history.state, limethatListPosition: position,
-          [router.location === '/labels' ? 'limethatLabelList' : 'limethatEventList']: position }, '');
-      }
-      if (router.location === '/settings') {
-        settingsPosition = { url: window.location.hash || '#/settings', y: window.scrollY };
-        history.replaceState({ ...history.state, limethatSettings: { ...settingsPosition } }, '');
-      }
-      if (dockNavigation) {
-        const position = href === '#/events' ? eventListNavigation.position : href === '#/labels' ? labelListNavigation.position : href === '#/settings' ? settingsPosition : null;
-        if (position) { href = position.url; pendingListPosition = position; }
-      }
-      if (anchor.hasAttribute('data-restore-event-list')) pendingListPosition = eventListNavigation.position;
-      if (anchor.hasAttribute('data-restore-label-list')) pendingListPosition = labelListNavigation.position;
-      pendingListPosition = pendingListPosition?.url === href ? pendingListPosition : listPositions.get(href) ?? null;
-      history.replaceState({ ...history.state, limethatFocus: href }, '');
+      session.navigation.remember(selector ? captureListPosition(selector, href, anchor) : { url: from, y: window.scrollY }, href);
+      if (dockNavigation) href = session.navigation.destination(href);
+      session.navigation.prepare(from, href);
       renderedUrl = null;
       followLink(href, anchor);
     };
@@ -236,42 +213,37 @@
     if (!archive) { previousArchive = null; return; }
     if (archive.root !== previousArchive) {
       previousArchive = archive.root;
-      listPositions.clear();
-      eventListNavigation.position = null;
-      labelListNavigation.position = null;
-      settingsPosition = null;
-      pendingListPosition = null;
-      history.replaceState({ ...history.state, limethatEventList: undefined, limethatLabelList: undefined, limethatSettings: undefined, limethatListPosition: undefined }, '');
+      session.navigation.reset();
       session.reviewRequired = false;
       session.notice = `Opened ${archive.root.name}.`;
     }
   });
-  let pendingListPosition: EventListPosition | null = null;
-  let settingsPosition: EventListPosition | null = null;
   let routeLoadedOnce = false;
   let renderedUrl: string | null = null;
   async function routeLoaded() {
-    if (!routeLoadedOnce) { routeLoadedOnce = true; renderedUrl = window.location.hash || '#/'; return; }
     await tick();
+    // Router restoration is disabled; take browser restoration ownership after the router's mount effect.
+    history.scrollRestoration = 'manual';
     const location = window.location.hash || '#/';
-    renderedUrl = location;
-    const stateKey = router.location === '/labels' ? 'limethatLabelList' : router.location === '/settings' ? 'limethatSettings' : 'limethatEventList';
-    const savedList = history.state?.limethatListPosition as EventListPosition | undefined;
-    const position = pendingListPosition ?? (savedList?.url === location ? savedList : history.state?.[stateKey]) as EventListPosition | undefined;
-    pendingListPosition = null;
-    if (position && position.url === location && (listSelector(router.location) || router.location === '/settings')) {
+    const entry = session.navigation.arrive(location);
+    if (!routeLoadedOnce) { routeLoadedOnce = true; renderedUrl = location; return; }
+    const position = entry.position;
+    if (position && position.url === location) {
       // View transitions pause painting, so waiting for an animation frame here can stall the return snapshot.
       if (!transitionRouteReady) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       if ((window.location.hash || '#/') !== location) return;
       const item = restoreListPosition(position);
-      history.replaceState({ ...history.state, [stateKey]: { ...position }, limethatListPosition: { ...position } }, '');
+      renderedUrl = location;
       const href = position.focusHref;
-      const link = href ? document.querySelector<HTMLElement>(`main a[href="${CSS.escape(href)}"]`) : null;
+      const link = href ? Array.from(document.querySelectorAll<HTMLElement>(`main a[href="${CSS.escape(href)}"]`))
+        .find(item => !item.closest('[inert]')) : null;
       (link ?? item?.querySelector<HTMLElement>('a') ?? document.querySelector<HTMLElement>('main'))?.focus({ preventScroll: true });
       transitionRouteReady?.();
       return;
     }
-    const saved = history.state?.limethatFocus as string | undefined;
+    window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    renderedUrl = location;
+    const saved = entry.focusHref;
     const target = saved ? Array.from(document.querySelectorAll<HTMLElement>(`main a[href="${CSS.escape(saved)}"]`))
       .find(link => !link.closest('[inert]')) : null;
     (target ?? document.querySelector<HTMLElement>('main h1.ui-detail-title[tabindex]') ?? document.querySelector<HTMLElement>('main'))?.focus({ preventScroll: true });
@@ -305,7 +277,7 @@
             <EventList active={eventListRoute} />
             <LabelList active={router.location === '/labels'} />
           {/key}
-          <Router {routes} restoreScrollState onRouteLoaded={routeLoaded} />
+          <Router {routes} onRouteLoaded={routeLoaded} />
         </div>
       {/if}
     </div>

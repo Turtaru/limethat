@@ -52,6 +52,8 @@ export class PictureCache {
   warning = '';
   private archiveId: Promise<string> | undefined;
   private epoch = cacheEpoch;
+  private generation = 0;
+  private changes = new EventTarget();
   private pending = new Map<string, Promise<File>>();
   private checked = new Map<string, number>();
   private running = 0;
@@ -75,16 +77,17 @@ export class PictureCache {
     catch { this.warning = 'Picture cache unavailable. Folder reads still work; cached pictures may not survive this session.'; }
   }
 
-  private async save(row: CachedPicture, epoch: number): Promise<void> {
+  private async save(row: CachedPicture, epoch: number, generation: number): Promise<void> {
     if (row.blob.size > LIMIT) return;
     const db = await database();
     try {
-      if (epoch !== cacheEpoch) return;
+      if (epoch !== cacheEpoch || generation !== this.generation) return;
       await new Promise<void>((resolve, reject) => {
         const transaction = db.transaction('pictures', 'readwrite');
         const store = transaction.objectStore('pictures');
         const request = store.getAll();
         request.onsuccess = () => {
+          if (epoch !== cacheEpoch || generation !== this.generation) return;
           const rows = (request.result as CachedPicture[]).filter(item => item.key !== row.key).sort((a, b) => a.used - b.used);
           let size = rows.reduce((total, item) => total + item.blob.size, row.blob.size);
           for (const item of rows) {
@@ -105,24 +108,28 @@ export class PictureCache {
     const existing = this.pending.get(key);
     if (existing) return existing;
     const epoch = cacheEpoch;
+    const generation = this.generation;
+    const current = () => epoch === cacheEpoch && generation === this.generation;
     const task = (async () => {
       if (this.running >= 2) await new Promise<void>(resolve => this.waiting.push(resolve));
       else this.running++;
       try {
-        this.checked.set(key, Date.now());
         if (cached) this.diagnostics?.increment('Picture cache background checks');
         const source = await this.read(name, thumbnail);
         if (cached && source.name === cached.name && source.size === cached.size && source.lastModified === cached.modified) {
           this.diagnostics?.increment('Picture cache unchanged');
           cached.used = Date.now();
-          if (epoch === cacheEpoch) await this.optional(() => stored('pictures', 'readwrite', store => epoch === cacheEpoch ? store.put(cached) : store.get(cached.key)));
+          if (current()) {
+            this.checked.set(key, Date.now());
+            await this.optional(() => stored('pictures', 'readwrite', store => current() ? store.put(cached) : store.get(cached.key)));
+          }
           return new File([cached.blob], cached.name, { type: cached.blob.type, lastModified: cached.modified });
         }
         const bytes = await (this.diagnostics?.measure('Picture cache byte read', () => source.arrayBuffer()) ?? source.arrayBuffer());
         if (cached) this.diagnostics?.increment('Picture cache refreshed');
         const file = new File([bytes], source.name, { type: source.type, lastModified: source.lastModified });
-        if (archive && epoch === cacheEpoch) await this.optional(() => this.save({ key, archive, blob: file, name: file.name, size: file.size, modified: file.lastModified, used: Date.now() }, epoch));
-        this.checked.set(key, Date.now());
+        if (archive && current()) await this.optional(() => this.save({ key, archive, blob: file, name: file.name, size: file.size, modified: file.lastModified, used: Date.now() }, epoch, generation));
+        if (current()) this.checked.set(key, Date.now());
         return file;
       } finally {
         const next = this.waiting.shift();
@@ -131,21 +138,39 @@ export class PictureCache {
       }
     })();
     this.pending.set(key, task);
-    const done = () => this.pending.delete(key);
+    const done = () => { if (this.pending.get(key) === task) this.pending.delete(key); };
     void task.then(done, done);
     return task;
   }
 
-  invalidate(): void {
+  subscribe(name: string, onInvalidate: () => void): () => void {
+    const event = `invalidate:${name}`;
+    this.changes.addEventListener('invalidate', onInvalidate);
+    this.changes.addEventListener(event, onInvalidate);
+    return () => {
+      this.changes.removeEventListener('invalidate', onInvalidate);
+      this.changes.removeEventListener(event, onInvalidate);
+    };
+  }
+
+  /** Makes future reads revalidate and notifies mounted pictures; older requests cannot refill the cache. */
+  invalidate(name?: string): void {
+    this.epoch = cacheEpoch;
+    this.generation++;
+    this.pending.clear();
     this.checked.clear();
+    this.changes.dispatchEvent(new Event(name === undefined ? 'invalidate' : `invalidate:${name}`));
   }
 
   async load(name: string, thumbnail: boolean): Promise<{ file: File; refresh?: Promise<File | null> }> {
-    if (this.epoch !== cacheEpoch) { this.epoch = cacheEpoch; this.invalidate(); }
+    if (this.epoch !== cacheEpoch) this.invalidate();
+    const epoch = cacheEpoch;
+    const generation = this.generation;
     this.archiveId ??= this.identity();
     const archive = await this.optional(() => this.archiveId!);
     const key = `${archive ?? 'session'}:${thumbnail ? 'thumbnail' : 'original'}:${name}`;
     const cached = archive ? await this.optional(() => stored<CachedPicture | undefined>('pictures', 'readonly', store => store.get(key))) : undefined;
+    if (generation !== this.generation || epoch !== cacheEpoch) return this.load(name, thumbnail);
     if (!cached || !(cached.blob instanceof Blob) || cached.size !== cached.blob.size || cached.archive !== archive || !Number.isFinite(cached.modified)) {
       this.diagnostics?.increment('Picture cache misses');
       return { file: await this.fresh(key, name, thumbnail, archive) };
@@ -157,7 +182,8 @@ export class PictureCache {
       file.name === cached.name && file.size === cached.size && file.lastModified === cached.modified ? null : file
     ).catch(async error => {
       if (failure(error).code === 'unavailable') {
-        await this.optional(() => stored('pictures', 'readwrite', store => store.delete(key)));
+        await this.optional(() => stored('pictures', 'readwrite', store =>
+          generation === this.generation && epoch === cacheEpoch ? store.delete(key) : store.get(key)));
       }
       throw error;
     });

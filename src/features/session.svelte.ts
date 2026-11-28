@@ -11,12 +11,14 @@ import { labelKey } from '../lib/archive-format';
 import type { EventDraft, LabelEditorDraft } from '../lib/ui-kit/types';
 import { containedFrame } from '../lib/images/image-frame';
 import { processPicture } from '../lib/pictures';
+import { ListNavigation } from './list-navigation';
 
 export const sessionKey = Symbol('limethat');
 export const useSession = () => getContext<Session>(sessionKey);
 
 export class Session {
   workspace = new Workspace();
+  readonly navigation = new ListNavigation();
   notice = $state('');
   theme = $state<'dark' | 'light'>('dark');
   reviewRequired = $state(false);

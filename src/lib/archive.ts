@@ -367,7 +367,10 @@ export class Archive {
   async load(onprogress?: (progress: ArchiveLoadProgress) => void, onpartial?: (summary: ArchiveSummary) => void, cached?: CachedEvents): Promise<ArchiveSummary> {
     return this.exclusive(() => this.readArchive(onprogress, onpartial, cached));
   }
-  async refresh(): Promise<ArchiveSummary> { return this.load(); }
+  async refresh(): Promise<ArchiveSummary> {
+    this.pictureCache.invalidate();
+    return this.load();
+  }
 
   async createEvent(draft: EventDraft): Promise<MutationResult<ArchiveEvent>> {
     return this.exclusive(async () => {
@@ -541,7 +544,7 @@ export class Archive {
             attempted = true;
             await this.write(path, thumbnail);
             progress.created++;
-            this.pictureCache.invalidate();
+            this.pictureCache.invalidate(original.name);
           } catch (error) {
             let message = failure(error).message;
             if (attempted) {

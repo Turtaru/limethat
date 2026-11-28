@@ -33,6 +33,10 @@ test('thumbnail creation preserves originals, skips existing thumbnails, reports
   await root.put('attachments/existing.png', 'original png');
   await root.put('attachments/existing.png.thumb.jpg', 'existing thumbnail');
   await root.put('attachments/broken.jpg', 'broken');
+  const invalidated: string[] = [];
+  archive.pictureCache.subscribe('new.jpg', () => invalidated.push('new.jpg'));
+  archive.pictureCache.subscribe('existing.png', () => invalidated.push('existing.png'));
+  archive.pictureCache.subscribe('broken.jpg', () => invalidated.push('broken.jpg'));
   let last: ThumbnailProgress | undefined;
   await archive.createMissingThumbnails(progress => { last = progress; });
   assert.equal(last!.total, 3);
@@ -46,6 +50,7 @@ test('thumbnail creation preserves originals, skips existing thumbnails, reports
   await archive.createMissingThumbnails(progress => { last = progress; });
   assert.equal(last!.created, 0);
   assert.equal(last!.skipped, 2);
+  assert.deepEqual(invalidated, ['new.jpg']);
 });
 
 test('failed thumbnail verification removes the partial derivative and permits retry', async t => {

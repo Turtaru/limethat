@@ -265,7 +265,7 @@ export class Workspace {
 
   async clearPictureCache(): Promise<void> {
     this.start('clearing picture cache');
-    try { await clearPictureCache(); this.pictureCacheWarning = ''; }
+    try { await clearPictureCache(); this.archive?.pictureCache.invalidate(); this.pictureCacheWarning = ''; }
     catch { this.pictureCacheWarning = 'Could not clear the picture cache. Try closing other tabs and retrying.'; }
     finally { this.operation = null; }
   }

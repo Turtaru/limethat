@@ -30,7 +30,7 @@
   });
   function search(event: Event) {
     query = (event.currentTarget as HTMLInputElement).value;
-    history.replaceState({ ...history.state, limethatEventList: undefined }, '', `#/events${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+    session.navigation.replaceQuery(`#/events${query ? `?q=${encodeURIComponent(query)}` : ''}`);
   }
   async function jump() {
     dateOpen = false;

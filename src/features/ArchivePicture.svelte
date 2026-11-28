@@ -12,7 +12,8 @@
     name: string; alt: string; frame?: PictureFrame; thumbnail?: boolean; viewable?: boolean; active?: boolean; transitionName?: string; onready?: () => void;
   } = $props();
   const session = useSession();
-  let handoff = untrack(() => transitionName ? { name, archive: session.workspace.archive, file: eventPhotoTransition.file } : null);
+  let revision = $state(0);
+  let invalidated = false;
   let host: HTMLDivElement;
   let visible = $state(false);
   let url = $state('');
@@ -26,13 +27,17 @@
   onMount(() => observeVisibility(host, intersecting => {
     if (thumbnail || intersecting) visible = intersecting;
   }));
+  $effect(() => session.workspace.archive?.pictureCache.subscribe(name, () => {
+    invalidated = true;
+    revision++;
+  }));
   $effect(() => {
+    revision;
     const archive = session.workspace.archive;
     const source = name;
-    if (!active) handoff = null;
-    else if (!handoff) handoff = untrack(() => eventPhotoTransition.returning && eventPhotoTransition.name === source
-      ? { name: source, archive, file: eventPhotoTransition.file } : null);
-    const transferred = handoff?.name === source && handoff.archive === archive ? handoff.file : null;
+    const transition = transitionName;
+    const transferred = !invalidated && transition ? untrack(() => eventPhotoTransition.name === source ? eventPhotoTransition.file : null) : null;
+    invalidated = false;
     const load = active && (!!transferred || visible);
     let current = true;
     let owned = '';

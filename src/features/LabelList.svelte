@@ -20,7 +20,7 @@
   });
   function search(event: Event) {
     query = (event.currentTarget as HTMLInputElement).value;
-    history.replaceState({ ...history.state, limethatLabelList: undefined }, '', `#/labels${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+    session.navigation.replaceQuery(`#/labels${query ? `?q=${encodeURIComponent(query)}` : ''}`);
   }
 </script>
 
