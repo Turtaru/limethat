@@ -44,11 +44,12 @@
   }
   function themeChanged() {
     try { localStorage.setItem('limethat-theme', session.theme); }
-    catch { session.notice = 'Theme changed, but this browser could not remember the preference.'; }
+    catch { session.notify('Theme changed, but this browser could not remember the preference.', 'warning'); }
   }
 </script>
 <div class="ui-stack">
   <PageHeading title="Settings" subtitle="Your archive and preferences." />
+  <section class="ui-section ui-stack"><h2>System activity</h2><p class="ui-muted">Current work, errors, and this tab’s message history.</p><Button onclick={() => { session.activity.open = true; }}>Open system activity</Button></section>
   <section class="ui-section ui-stack"><h2>Archive connection</h2><Connection /></section>
   {#if session.workspace.translationRecovery}
     <section class="ui-section ui-stack">
@@ -80,13 +81,7 @@
     <h2>Pictures</h2>
     <p>Create missing whole-image thumbnails beside originals in the archive. Originals and framing stay unchanged; existing thumbnails are skipped. Keep other tools closed. This can take time. After an abrupt close, remove any incomplete thumbnail before rerunning.</p>
     <Button disabled={!session.canWrite || session.draftCount > 0} onclick={createThumbnails}>Create missing thumbnails</Button>
-    {#if session.workspace.operation === 'creating thumbnails' && !session.workspace.thumbnailProgress}<p role="status">Listing attachment files…</p>{/if}
-    {#if session.workspace.thumbnailProgress}
-      {@const progress = session.workspace.thumbnailProgress}
-      <p role="status">Processed {progress.processed}/{progress.total}: {progress.created} created, {progress.skipped} skipped, {progress.failures.length} failed.</p>
-      <progress aria-label="Pictures processed" max={Math.max(1, progress.total)} value={progress.processed}></progress>
-      {#if progress.failures.length}<ul class="ui-error">{#each progress.failures as item}<li><code>{item.path}</code>: {item.message}</li>{/each}</ul>{/if}
-    {/if}
+    <Button onclick={() => { session.activity.open = true; }}>View progress and results</Button>
     <p class="ui-muted">Pictures use a disposable browser cache, limited to 64 MiB across archives. Cached pictures show immediately; when shown again, they are checked against the folder in background, at most once every 30 seconds. Clearing it never changes archive files.</p>
     <Button disabled={!!session.workspace.operation || session.pendingSaves.size > 0 || pwa.activating} onclick={clearPictures}>Clear picture cache</Button>
     {#if session.workspace.pictureCacheWarning}<p class="ui-error" role="status">{session.workspace.pictureCacheWarning}</p>{/if}

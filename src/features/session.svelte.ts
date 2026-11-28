@@ -12,6 +12,7 @@ import type { EventDraft, LabelEditorDraft } from '../lib/ui-kit/types';
 import { containedFrame } from '../lib/images/image-frame';
 import { processPicture } from '../lib/pictures';
 import { ListNavigation } from './list-navigation';
+import type { ActivityLevel } from '../lib/system-activity.svelte';
 
 export const sessionKey = Symbol('limethat');
 export const useSession = () => getContext<Session>(sessionKey);
@@ -19,12 +20,22 @@ export const useSession = () => getContext<Session>(sessionKey);
 export class Session {
   workspace = new Workspace();
   readonly navigation = new ListNavigation();
-  notice = $state('');
+  private lastNotice = $state('');
+  get activity() { return this.workspace.activity; }
+  get notice() { return this.lastNotice; }
+  set notice(message: string) { this.notify(message); }
+  notify(message: string, level: ActivityLevel = 'info') {
+    this.lastNotice = message;
+    if (message) this.activity.add(message, level);
+  }
   theme = $state<'dark' | 'light'>('dark');
   reviewRequired = $state(false);
-  draftCount = $state(0);
-  readonly eventDrafts = new Map<string, EventPageDraft>();
-  readonly labelDrafts = new Map<string, LabelPageDraft>();
+  savedRefreshError = $state.raw<ArchiveFailure | null>(null);
+  get draftCount() {
+    return [...this.eventDrafts, ...this.labelDrafts].filter(([key, draft]) => draft.dirty || this.pendingSaves.has(key) || this.saveErrors.has(key)).length;
+  }
+  readonly eventDrafts = new SvelteMap<string, EventPageDraft>();
+  readonly labelDrafts = new SvelteMap<string, LabelPageDraft>();
   readonly pendingSaves = new SvelteMap<string, { title: string; eventIds: string[]; labelId?: string; rewritesEvents?: boolean }>();
   readonly saveErrors = new SvelteMap<string, string>();
   private saveTail: Promise<void> = Promise.resolve();
@@ -44,6 +55,7 @@ export class Session {
   private enqueueSave(key: string, page: EventPageDraft | LabelPageDraft, pending: { title: string; eventIds: string[]; labelId?: string; rewritesEvents?: boolean }, save: () => Promise<void>) {
     this.saveErrors.delete(key);
     this.pendingSaves.set(key, pending);
+    const activityId = this.activity.add(`Saving ${pending.title}`, 'info', 'running');
     this.saveTail = this.saveTail.then(async () => {
       let started = false;
       try {
@@ -51,9 +63,12 @@ export class Session {
         started = true;
         await save();
         this.discardDraft(key);
+        this.activity.finish(activityId);
       } catch (cause) {
         if (started && this.reviewRequired) page.blocked = true;
-        this.saveErrors.set(key, cause instanceof Error ? cause.message : 'Could not save changes.');
+        const message = cause instanceof Error ? cause.message : 'Could not save changes.';
+        this.saveErrors.set(key, message);
+        this.activity.finish(activityId, message);
       } finally { this.pendingSaves.delete(key); }
     });
   }
@@ -119,20 +134,18 @@ export class Session {
 
   eventDraft(key: string, original: ArchiveEvent | null): EventPageDraft {
     let draft = this.eventDrafts.get(key);
-    if (!draft) {
+    if (!draft || (!draft.dirty && !this.pendingSaves.has(key) && !this.saveErrors.has(key) && draft.original !== original)) {
       draft = new EventPageDraft(this, original);
       this.eventDrafts.set(key, draft);
-      this.draftCount++;
     }
     return draft;
   }
 
   labelDraft(key: string, original: Label | null): LabelPageDraft {
     let draft = this.labelDrafts.get(key);
-    if (!draft) {
+    if (!draft || (!draft.dirty && !this.pendingSaves.has(key) && !this.saveErrors.has(key) && draft.original !== original)) {
       draft = new LabelPageDraft(this, original);
       this.labelDrafts.set(key, draft);
-      this.draftCount++;
     }
     return draft;
   }
@@ -141,18 +154,18 @@ export class Session {
     this.saveErrors.delete(key);
     this.eventDrafts.delete(key);
     this.labelDrafts.delete(key);
-    this.draftCount = this.eventDrafts.size + this.labelDrafts.size;
   }
 
   /** Interprets filesystem writes, which can succeed even when refreshing the screen fails. */
-  result<T>(outcome: MutationOutcome<T>): T {
+  result<T>(outcome: MutationOutcome<T>, successMessage = 'Saved.'): T {
     if (outcome.status === 'failed') {
       if (outcome.error.code === 'partial-change' || outcome.error.recoveryPaths.length) this.reviewRequired = true;
       throw outcome.error;
     }
     if (outcome.refresh === 'failed') {
-      this.notice = `Saved, but refreshing failed: ${outcome.refreshError.message}. Refresh or reconnect; do not repeat the save.`;
-    } else this.notice = 'Saved.';
+      this.savedRefreshError = outcome.refreshError;
+      this.notify(`Saved, but refreshing failed: ${outcome.refreshError.message}. Refresh or reconnect; do not repeat the save.`, 'error');
+    } else this.notice = successMessage;
     return outcome.result.value;
   }
 
@@ -160,6 +173,9 @@ export class Session {
     if (this.draftCount) { this.notice = 'Save or cancel drafts before closing the archive.'; return; }
     await this.workspace.disconnect();
     if (!this.workspace.archive && this.workspace.state === 'no-folder') {
+      this.eventDrafts.clear();
+      this.labelDrafts.clear();
+      this.saveErrors.clear();
       this.reviewRequired = false;
       this.eventRebases.clear();
       this.viewer = null;
@@ -194,7 +210,7 @@ export class DraftPictures {
     if (known) return known;
     await this.prepare(file);
     const outcome = await this.session.workspace.importPicture(file);
-    const name = this.session.result(outcome);
+    const name = this.session.result(outcome, 'Picture imported.');
     this.imported.set(file, name);
     if (outcome.status === 'saved' && outcome.refresh === 'failed') {
       throw new ArchiveFailure('unavailable', 'Picture saved, but refresh failed. Refresh or reconnect before saving the record. The imported picture will be reused.');
@@ -209,11 +225,14 @@ export class EventPageDraft {
   value = $state<EventDraft>({ title: '', date: '', endDate: '', description: '', labelIds: [], pictures: [], removedPictureIds: [] });
   blocked = $state(false);
   readonly pictures: DraftPictures;
+  private readonly initial: string;
+  get dirty() { return this.blocked || this.pictures.pending > 0 || JSON.stringify([this.value, this.frames]) !== this.initial; }
   constructor(session: Session, readonly original: ArchiveEvent | null) {
     const initial = editorInitial(original);
     this.frames = { ...original?.frames };
     this.value = { title: initial.title ?? '', date: initial.date ?? '', endDate: initial.endDate ?? '', description: initial.description ?? '', labelIds: initial.labelIds ?? [], pictures: [], removedPictureIds: [] };
     this.pictures = new DraftPictures(session);
+    this.initial = JSON.stringify([this.value, this.frames]);
   }
 }
 
@@ -222,9 +241,12 @@ export class LabelPageDraft {
   value = $state<LabelEditorDraft>({ name: '', picture: null, removePicture: false });
   blocked = $state(false);
   readonly pictures: DraftPictures;
+  private readonly initial: string;
+  get dirty() { return this.blocked || this.pictures.pending > 0 || JSON.stringify([this.value, this.frame]) !== this.initial; }
   constructor(session: Session, readonly original: Label | null) {
     this.frame = original?.picture_frame;
     this.value = { name: original?.title ?? '', picture: null, removePicture: false };
     this.pictures = new DraftPictures(session);
+    this.initial = JSON.stringify([this.value, this.frame]);
   }
 }

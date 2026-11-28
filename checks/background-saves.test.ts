@@ -91,9 +91,12 @@ test('saves capture drafts, lock only their records, and serialize writes across
   assert.equal(session.workspace.summary!.events.find(event => event.id === events[1].id)!.title, 'Second title');
   assert.equal(session.eventDrafts.has(keys[0]), false);
   assert.equal(session.eventDrafts.has(keys[1]), false);
-  assert.equal(session.draftCount, 1);
+  assert.equal(session.draftCount, 0);
   assert.equal(session.saveErrors.size, 0);
   assert.equal(session.canWrite, true);
+  const saves = session.activity.entries.filter(entry => entry.message.startsWith('Saving Event:'));
+  assert.equal(saves.length, 2);
+  assert.ok(saves.every(entry => entry.status === 'complete'));
 });
 
 test('picture preparation belongs to the save job and captures submitted frames', async () => {
@@ -258,6 +261,8 @@ test('a committed save with a failed refresh discards its draft and never offers
   assert.equal(session.eventDrafts.has(keys[0]), false);
   assert.equal(session.saveErrors.size, 0);
   assert.match(session.notice, /Saved, but refreshing failed/);
+  assert.equal(session.savedRefreshError, session.workspace.error);
+  assert.ok(session.activity.entries.some(entry => entry.level === 'error' && entry.message.includes('do not repeat the save')));
   assert.equal(session.canEdit, false);
 });
 

@@ -14,6 +14,25 @@
     .ui-photo-transition::view-transition-old(*),
     .ui-photo-transition::view-transition-new(*) { animation: none !important; }
   }
+  .ui-activity-anchor { position: fixed; z-index: 6; bottom: calc(4.625rem + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: calc(100% - 2 * var(--page-gutter)); max-width: var(--dock-width); display: flex; justify-content: flex-end; pointer-events: none; }
+  .ui-activity-control { position: relative; color: var(--accent); pointer-events: auto; }
+  .ui-activity-button--error { color: var(--danger); border-color: currentColor; }
+  .ui-activity-button--warning { color: var(--accent); border-color: currentColor; }
+  .ui-activity-ring { position: absolute; inset: -.25rem; width: calc(100% + .5rem); height: calc(100% + .5rem); appearance: none; border-radius: 50%; pointer-events: none; background: conic-gradient(currentColor var(--activity-progress), var(--line) 0); background-clip: border-area; border: 2px solid transparent; background-origin: border-box; }
+  .ui-activity-ring::-webkit-progress-bar { display: none; background: none; }
+  .ui-activity-ring::-webkit-progress-value { display: none; background: none; }
+  .ui-activity-ring::-moz-progress-bar { display: none; background: none; }
+  .ui-activity-ring:indeterminate { animation: ui-activity-spin 1.5s linear infinite; }
+  @keyframes ui-activity-spin { to { rotate: 1turn; } }
+  @supports not (background-clip: border-area) {
+    .ui-activity-ring { border: 0; mask-image: radial-gradient(farthest-side, transparent calc(100% - 2px), black calc(100% - 1.5px)); }
+  }
+  @media (prefers-reduced-motion: reduce) { .ui-activity-ring:indeterminate { animation-duration: 6s; } }
+  @media (forced-colors: active) { .ui-activity-ring { forced-color-adjust: none; color: CanvasText; background: conic-gradient(CanvasText var(--activity-progress), Canvas 0); } }
+  body:has(dialog[open]) .ui-activity-anchor { visibility: hidden; }
+  .ui-activity-history { list-style: none; padding: 0; margin: 0; }
+  .ui-activity-history li { display: grid; gap: var(--space-2); padding-block: var(--space-4); border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+  .ui-activity-history time, .ui-activity-history small { color: var(--muted); font-size: .75rem; }
   .ui-route-views { position: relative; }
   .ui-cached-view--inactive { content-visibility: hidden; position: absolute; inset: 0 0 auto; block-size: 0; overflow: clip; }
   @supports not (content-visibility: hidden) {
@@ -86,6 +105,8 @@
   .ui-welcome-folder-caption { display: block; margin-top: var(--space-4); text-align: center; color: var(--muted); font-size: .625rem; }
   .ui-welcome-trust, .ui-welcome-footer { text-align: center; font-size: .75rem; }
   .ui-welcome-trust { padding-block: var(--space-3) var(--space-6); }
+  .ui-welcome-tools { justify-content: center; gap: var(--space-5); }
+  .ui-welcome-tools .ui-button { font-size: .75rem; }
 
   @media (max-width: 37.5rem) {
     .ui-welcome-brand { font-size: 1.1875rem; }

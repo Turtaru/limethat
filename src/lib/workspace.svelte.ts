@@ -7,6 +7,7 @@ import type { PictureStage } from './pictures';
 import type { LoadingDiagnostics } from './loading-diagnostics';
 import { clearPictureCache } from './picture-cache';
 import { clearEventSnapshots } from './event-snapshot';
+import { SystemActivity, operationMessage } from './system-activity.svelte';
 
 export type WorkspaceState = 'unsupported' | 'no-folder' | 'permission-required' | 'loading' | 'ready' | 'error';
 export type MutationOutcome<T> =
@@ -16,6 +17,9 @@ export type MutationOutcome<T> =
 
 /** Holds folder snapshots and operation status. Cached/partial snapshots are read-only until folder verification completes; views own drafts and navigation. */
 export class Workspace {
+  readonly activity = new SystemActivity();
+  private activityId: number | null = null;
+  private activityError: string | undefined;
   readonly capability = folderCapability();
   state = $state<WorkspaceState>(this.capability.supported ? 'no-folder' : 'unsupported');
   archive = $state.raw<Archive | null>(null);
@@ -37,12 +41,21 @@ export class Workspace {
   private start(operation: string): void {
     if (this.operation || this.archive?.operating) throw new ArchiveFailure('busy', 'Another workspace operation is running; wait before retrying.');
     this.operation = operation;
+    this.activityId = this.activity.add(operationMessage(operation), 'info', 'running');
+    this.activityError = undefined;
     this.error = null;
     if (['opening', 'creating', 'restoring', 'reconnecting', 'closing'].includes(operation)) this.loadProgress = null;
   }
 
+  private finishOperation() {
+    if (this.activityId !== null) this.activity.finish(this.activityId, this.activityError ?? this.error?.message);
+    this.activityId = null;
+    this.operation = null;
+  }
+
   private failed(error: unknown): ArchiveFailure {
     const problem = failure(error);
+    this.activityError = problem.message;
     this.error = problem;
     const needsPermission = permissionRequired(problem);
     this.state = needsPermission ? 'permission-required'
@@ -125,7 +138,7 @@ export class Workspace {
     } catch (error) {
       if (failure(error).code === 'cancelled') this.state = previousState;
       else this.failed(error);
-    } finally { this.operation = null; }
+    } finally { this.finishOperation(); }
   }
 
   async restore(): Promise<void> {
@@ -136,7 +149,7 @@ export class Workspace {
       if (handle) await this.connect(handle);
       else this.state = this.archive ? 'ready' : 'no-folder';
     } catch (error) { this.failed(error); }
-    finally { this.operation = null; }
+    finally { this.finishOperation(); }
   }
 
   async reconnect(): Promise<void> {
@@ -153,7 +166,7 @@ export class Workspace {
       }
       await this.connect(target.handle, target.create);
     } catch (error) { this.failed(error); }
-    finally { this.operation = null; }
+    finally { this.finishOperation(); }
   }
 
   async disconnect(): Promise<void> {
@@ -174,7 +187,7 @@ export class Workspace {
       this.persistenceWarning = null;
       this.state = this.capability.supported ? 'no-folder' : 'unsupported';
     } catch (error) { this.failed(error); }
-    finally { this.operation = null; }
+    finally { this.finishOperation(); }
   }
 
   async refresh(): Promise<void> {
@@ -192,7 +205,7 @@ export class Workspace {
       this.state = 'ready';
       this.permission = 'granted';
     } catch (error) { this.failed(error); }
-    finally { this.operation = null; }
+    finally { this.finishOperation(); }
   }
 
   private async mutate<T>(name: string, action: (archive: Archive, summary: ArchiveSummary) => Promise<MutationResult<T>>, recovery = false): Promise<MutationOutcome<T>> {
@@ -221,7 +234,7 @@ export class Workspace {
       }
       return { status: 'failed', error: this.failed(error) };
     }
-    finally { this.operation = null; }
+    finally { this.finishOperation(); }
   }
 
   rollbackRelatedEvents() { return this.mutate('rolling back migration', archive => archive.rollbackRelatedEvents(), true); }
@@ -243,7 +256,7 @@ export class Workspace {
       if (!this.archive) throw new ArchiveFailure('unavailable', 'Choose an archive folder first.');
       await this.archive.createMissingThumbnails(progress => { this.thumbnailProgress = progress; });
     } catch (error) { this.failed(error); }
-    finally { this.operation = null; }
+    finally { this.finishOperation(); }
   }
 
   private async persistSnapshot(): Promise<void> {
@@ -260,14 +273,14 @@ export class Workspace {
     this.start('clearing event cache');
     try { await clearEventSnapshots(); this.snapshotSavedAt = null; this.snapshotWarning = ''; }
     catch { this.snapshotWarning = 'Could not clear cached events. Close other tabs and retry.'; }
-    finally { this.operation = null; }
+    finally { this.finishOperation(); }
   }
 
   async clearPictureCache(): Promise<void> {
     this.start('clearing picture cache');
     try { await clearPictureCache(); this.archive?.pictureCache.invalidate(); this.pictureCacheWarning = ''; }
     catch { this.pictureCacheWarning = 'Could not clear the picture cache. Try closing other tabs and retrying.'; }
-    finally { this.operation = null; }
+    finally { this.finishOperation(); }
   }
 
   async cachedPicture(name: string, thumbnail = true) {

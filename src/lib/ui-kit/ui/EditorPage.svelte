@@ -11,6 +11,3 @@
   {@render children()}
   {#if footer}{@render footer()}{/if}
 </section>
-{#if saving}
-  <p class="ui-status" role="status">Saving changes… You can keep using the app.</p>
-{/if}

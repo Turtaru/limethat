@@ -30,6 +30,7 @@
     } catch {
       copyStatus = 'Clipboard unavailable. Select and copy the report text below.';
     }
+    session.activity.add(copyStatus, copyStatus === 'Report copied.' ? 'info' : 'warning');
   }
 </script>
 <div class="ui-stack">

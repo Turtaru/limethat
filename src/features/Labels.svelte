@@ -20,7 +20,7 @@
     if (!label || !session.canWrite || deleting) return;
     deleting = true; error = '';
     try {
-      session.result(await session.workspace.deleteLabel(labelKey(label.id)));
+      session.result(await session.workspace.deleteLabel(labelKey(label.id)), 'Label deleted.');
       confirmDelete = false; void replace('/labels');
     } catch (cause) { error = cause instanceof Error ? cause.message : 'Delete failed.'; }
     finally { deleting = false; }
@@ -33,7 +33,6 @@
       {@const name = pictureName(label.picture)}
       {@const selected = eventPhotoTransition.kind === 'label' && eventPhotoTransition.eventId === labelKey(label.id)}
       {@const transitioning = selected && !!eventPhotoTransition.file && !eventPhotoTransition.returning}
-      {#if session.labelSaving(labelKey(label.id))}<p class="ui-status" role="status">Saving this label. Editing is temporarily unavailable.</p>{/if}
       <div class="ui-detail-layout">
         {#if name}<div class="ui-stack ui-detail-media"><ArchivePicture {name} alt={label.title} frame={label.picture_frame} viewable transitionName={transitioning ? 'event-photo' : undefined} onready={transitioning ? eventPhotoTransition.ready ?? undefined : undefined} /></div>{/if}
         <header class="ui-detail-field ui-detail-content"><p class="ui-section-label">Label name</p><h1 class="ui-detail-title" tabindex="-1" style:view-transition-name={selected ? 'event-title' : 'none'}>{label.title}</h1></header>

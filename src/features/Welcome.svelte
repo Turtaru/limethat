@@ -3,9 +3,11 @@
   import { useSession } from './session.svelte';
   import { installation, pwa, applyUpdate } from './pwa.svelte';
   import Connection from './Connection.svelte';
+  import LoadingDetails from './LoadingDetails.svelte';
 
   const session = useSession();
   const install = installation.state;
+  let showDetails = $state(false);
 </script>
 
 <AppShell>
@@ -66,5 +68,10 @@
 
   {#snippet footer()}
     <p class="ui-muted ui-welcome-footer">Your folder is the archive. Limethat is the window into it.</p>
+    <div class="ui-cluster ui-welcome-tools">
+      <Button variant="quiet" aria-expanded={showDetails} onclick={() => { showDetails = !showDetails; }}>{showDetails ? 'Hide loading details' : 'Show loading details'}</Button>
+      <Button variant="quiet" onclick={() => { session.activity.open = true; }}>System activity</Button>
+    </div>
+    {#if showDetails}<LoadingDetails />{/if}
   {/snippet}
 </AppShell>
